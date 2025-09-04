@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\MessageSent;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreMessageRequest;
 use App\Http\Requests\UpdateMessageRequest;
+use App\Http\Resources\MessageResource;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\MessageRead;
@@ -30,7 +32,7 @@ class MessageController extends Controller
             ->orderBy('created_at', 'asc')
             ->paginate(50);
 
-        return response()->json($messages);
+        return MessageResource::collection($messages);
     }
 
     /**
@@ -63,7 +65,10 @@ class MessageController extends Controller
             'read_at' => now(),
         ]);
 
-        return response()->json($message->load(['user', 'reads']), 201);
+        // Disparar evento de broadcasting
+        broadcast(new MessageSent($message->load(['user', 'conversation'])));
+
+        return new MessageResource($message->load(['user', 'reads']));
     }
 
     /**
@@ -78,7 +83,7 @@ class MessageController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        return response()->json($message->load(['user', 'reads', 'conversation']));
+        return new MessageResource($message->load(['user', 'reads', 'conversation']));
     }
 
     /**
@@ -96,7 +101,7 @@ class MessageController extends Controller
     {
         $message->update($request->only(['body', 'meta']));
         
-        return response()->json($message->load(['user', 'reads']));
+        return new MessageResource($message->load(['user', 'reads']));
     }
 
     /**

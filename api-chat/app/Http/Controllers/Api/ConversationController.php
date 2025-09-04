@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\UserTyping;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreConversationRequest;
 use App\Http\Requests\UpdateConversationRequest;
 use App\Http\Requests\ManageParticipantsRequest;
+use App\Http\Resources\ConversationResource;
 use App\Models\Conversation;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -21,12 +23,10 @@ class ConversationController extends Controller
         $user = Auth::user();
         
         $conversations = $user->conversations()
-            ->with(['users', 'owner', 'messages' => function ($query) {
-                $query->latest()->limit(1);
-            }])
+            ->with(['users', 'owner', 'lastMessage'])
             ->get();
 
-        return response()->json($conversations);
+        return ConversationResource::collection($conversations);
     }
 
     /**
@@ -56,7 +56,7 @@ class ConversationController extends Controller
                 ->first();
 
             if ($existingConversation) {
-                return response()->json($existingConversation->load(['users', 'owner']));
+                return new ConversationResource($existingConversation->load(['users', 'owner']));
             }
         }
 
@@ -76,7 +76,7 @@ class ConversationController extends Controller
             }
         }
 
-        return response()->json($conversation->load(['users', 'owner']), 201);
+        return new ConversationResource($conversation->load(['users', 'owner']));
     }
 
     /**
@@ -91,9 +91,9 @@ class ConversationController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $conversation->load(['users', 'owner', 'messages.user']);
+        $conversation->load(['users', 'owner', 'lastMessage']);
         
-        return response()->json($conversation);
+        return new ConversationResource($conversation);
     }
 
     /**
@@ -111,7 +111,7 @@ class ConversationController extends Controller
     {
         $conversation->update($request->only(['title']));
         
-        return response()->json($conversation->load(['users', 'owner']));
+        return new ConversationResource($conversation->load(['users', 'owner']));
     }
 
     /**
@@ -142,7 +142,7 @@ class ConversationController extends Controller
             $conversation->users()->attach($request->user_id, ['role' => $role]);
         }
         
-        return response()->json($conversation->load(['users', 'owner']));
+        return new ConversationResource($conversation->load(['users', 'owner']));
     }
 
     /**
@@ -157,6 +157,6 @@ class ConversationController extends Controller
         
         $conversation->users()->detach($request->user_id);
         
-        return response()->json($conversation->load(['users', 'owner']));
+        return new ConversationResource($conversation->load(['users', 'owner']));
     }
 }
