@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreMessageRequest;
+use App\Http\Requests\UpdateMessageRequest;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\MessageRead;
@@ -42,12 +44,9 @@ class MessageController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request, Conversation $conversation)
+    public function store(StoreMessageRequest $request, Conversation $conversation)
     {
         $user = Auth::user();
-        
-        // Verificar se o usuário faz parte da conversa
-        if (!$conversation->users()->where('user_id', $user->id)->exists()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 

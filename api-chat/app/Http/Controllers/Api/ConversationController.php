@@ -134,21 +134,8 @@ class ConversationController extends Controller
     /**
      * Add user to conversation
      */
-    public function addUser(Request $request, Conversation $conversation)
+    public function addUser(ManageParticipantsRequest $request, Conversation $conversation)
     {
-        $user = Auth::user();
-        
-        // Verificar se o usuário é admin da conversa
-        $userRole = $conversation->users()->where('user_id', $user->id)->first();
-        if (!$userRole || $userRole->pivot->role !== 'admin') {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        $request->validate([
-            'user_id' => 'required|exists:users,id',
-            'role' => 'sometimes|in:admin,member',
-        ]);
-
         $role = $request->role ?? 'member';
         
         if (!$conversation->users()->where('user_id', $request->user_id)->exists()) {
@@ -161,20 +148,8 @@ class ConversationController extends Controller
     /**
      * Remove user from conversation
      */
-    public function removeUser(Request $request, Conversation $conversation)
+    public function removeUser(ManageParticipantsRequest $request, Conversation $conversation)
     {
-        $user = Auth::user();
-        
-        // Verificar se o usuário é admin da conversa
-        $userRole = $conversation->users()->where('user_id', $user->id)->first();
-        if (!$userRole || $userRole->pivot->role !== 'admin') {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        $request->validate([
-            'user_id' => 'required|exists:users,id',
-        ]);
-
         // Não permitir remover o owner
         if ($request->user_id == $conversation->owner_id) {
             return response()->json(['message' => 'Cannot remove conversation owner'], 400);
