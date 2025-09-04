@@ -4,12 +4,14 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
-import { Subject, takeUntil, BehaviorSubject, combineLatest, map, startWith, debounceTime } from 'rxjs';
+import { Subject, takeUntil, BehaviorSubject, combineLatest, map, startWith, debounceTime, catchError } from 'rxjs';
 import { ChatApiService } from '../../../../core/services/chat-api.service';
 import { RealtimeService } from '../../../../core/services/realtime.service';
 import { MessageItemComponent } from '../message-item/message-item.component';
 import { Conversation, Message, CursorPage } from '../../../../shared/models';
 import { DateSeparatorPipe } from '../../../../shared/pipes';
+import { KeyboardShortcutsDirective } from '../../../../shared/directives';
+import { KeyboardShortcutsService, KeyboardShortcut, ErrorHandlerService, AccessibilityService } from '../../../../shared/services';
 
 interface MessageGroup {
   date: string;
@@ -26,10 +28,17 @@ interface MessageGroup {
     MatButtonModule,
     ScrollingModule,
     MessageItemComponent,
-    DateSeparatorPipe
+    DateSeparatorPipe,
+    KeyboardShortcutsDirective
   ],
   template: `
-    <div class="messages-container" #messagesContainer>
+    <div class="messages-container" 
+         #messagesContainer
+         [appKeyboardShortcuts]="keyboardShortcuts"
+         [context]="'messages'"
+         role="log"
+         aria-label="Lista de mensagens"
+         aria-live="polite">
       <!-- Loading More Messages -->
       <div *ngIf="loadingMore" class="loading-more">
         <mat-spinner diameter="24"></mat-spinner>
@@ -322,11 +331,18 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
   private lastScrollHeight = 0;
   private scrollPositionSubject = new BehaviorSubject<number>(0);
   private lastSeenMessageId: number | null = null;
+  
+  // Keyboard shortcuts
+  keyboardShortcuts: KeyboardShortcut[] = [];
 
   constructor(
     private chatApiService: ChatApiService,
-    private realtimeService: RealtimeService
+    private realtimeService: RealtimeService,
+    private keyboardService: KeyboardShortcutsService,
+    private errorHandler: ErrorHandlerService,
+    private accessibilityService: AccessibilityService
   ) {
+    this.initializeKeyboardShortcuts();
     // Set up message grouping observable
     this.messagesSubject.pipe(
       takeUntil(this.destroy$),
@@ -337,6 +353,37 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
     });
   }
 
+  private initializeKeyboardShortcuts(): void {
+    this.keyboardShortcuts = [
+      {
+        key: 'Home',
+        action: () => this.scrollToTop(),
+        description: 'Ir para o início (Home)'
+      },
+      {
+        key: 'End',
+        action: () => this.scrollToBottom(),
+        description: 'Ir para o final (End)'
+      },
+      {
+        key: 'PageUp',
+        action: () => this.scrollPageUp(),
+        description: 'Página anterior (Page Up)'
+      },
+      {
+        key: 'PageDown',
+        action: () => this.scrollPageDown(),
+        description: 'Próxima página (Page Down)'
+      },
+      {
+        key: 'r',
+        ctrlKey: true,
+        action: () => this.refreshMessages(),
+        description: 'Atualizar mensagens (Ctrl+R)'
+      }
+    ];
+  }
+
   ngOnInit(): void {
     this.setupRealtimeListeners();
     this.setupScrollListener();
@@ -345,6 +392,49 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+    
+    // Clean up keyboard shortcuts
+    this.keyboardShortcuts.forEach(shortcut => {
+      this.keyboardService.unregisterShortcut(shortcut.key, shortcut.ctrlKey, shortcut.altKey, shortcut.shiftKey);
+    });
+  }
+
+  // Keyboard shortcut methods
+  scrollToTop(): void {
+    if (this.messagesViewport) {
+      this.messagesViewport.scrollToIndex(0);
+      this.accessibilityService.announce('Rolado para o início das mensagens');
+    }
+  }
+
+  scrollToBottom(): void {
+    if (this.messagesViewport) {
+      this.messagesViewport.scrollToIndex(this.groupedMessages.length - 1);
+      this.accessibilityService.announce('Rolado para o final das mensagens');
+    }
+  }
+
+  scrollPageUp(): void {
+    if (this.messagesViewport) {
+      const currentIndex = this.messagesViewport.getRenderedRange().start;
+      const newIndex = Math.max(0, currentIndex - 10);
+      this.messagesViewport.scrollToIndex(newIndex);
+    }
+  }
+
+  scrollPageDown(): void {
+    if (this.messagesViewport) {
+      const currentIndex = this.messagesViewport.getRenderedRange().end;
+      const newIndex = Math.min(this.groupedMessages.length - 1, currentIndex + 10);
+      this.messagesViewport.scrollToIndex(newIndex);
+    }
+  }
+
+  refreshMessages(): void {
+    if (this.conversation) {
+      this.loadMessages();
+      this.accessibilityService.announce('Mensagens atualizadas');
+    }
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -372,7 +462,8 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
     this.shouldScrollToBottom = true;
 
     this.chatApiService.getMessages(this.conversation.id).pipe(
-      takeUntil(this.destroy$)
+      takeUntil(this.destroy$),
+      catchError(error => this.errorHandler.handleError(error, 'Erro ao carregar mensagens'))
     ).subscribe({
       next: (response: CursorPage<Message>) => {
         this.messages = response.data.reverse(); // Reverse to show oldest first
@@ -380,9 +471,9 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
         this.hasMoreMessages = !!response.next_cursor;
         this.messagesSubject.next([...this.messages]);
         this.loading = false;
+        this.accessibilityService.announce(`${this.messages.length} mensagens carregadas`);
       },
-      error: (error) => {
-        console.error('Error loading messages:', error);
+      error: () => {
         this.loading = false;
       }
     });

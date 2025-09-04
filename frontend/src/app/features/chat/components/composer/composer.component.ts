@@ -8,7 +8,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Subject, takeUntil, catchError } from 'rxjs';
+import { Subject } from 'rxjs';
+import { takeUntil, catchError } from 'rxjs/operators';
 import { ChatApiService } from '../../../../core/services/chat-api.service';
 import { TypingService } from '../../../../core/services/typing.service';
 import { Conversation, Message, SendMessageRequest } from '../../../../shared/models';
@@ -732,6 +733,35 @@ export class ComposerComponent implements OnInit, OnDestroy {
     this.initializeKeyboardShortcuts();
   }
 
+  private initializeKeyboardShortcuts(): void {
+    this.keyboardShortcuts = [
+      {
+        key: 'Enter',
+        ctrlKey: true,
+        action: () => this.sendMessage(),
+        description: 'Enviar mensagem (Ctrl+Enter)',
+        context: 'input'
+      },
+      {
+        key: 'Escape',
+        action: () => this.cancelReply(),
+        description: 'Cancelar resposta (Esc)'
+      },
+      {
+        key: 'e',
+        ctrlKey: true,
+        action: () => this.toggleEmojiPicker(),
+        description: 'Abrir/fechar emojis (Ctrl+E)'
+      },
+      {
+        key: 'f',
+        ctrlKey: true,
+        action: () => this.openFileDialog(),
+        description: 'Anexar arquivo (Ctrl+F)'
+      }
+    ];
+  }
+
   ngOnInit(): void {
     // Subscribe to typing events from other users
     if (this.conversation) {
@@ -887,11 +917,15 @@ export class ComposerComponent implements OnInit, OnDestroy {
      this.stopTyping();
 
      this.chatApiService.sendMessage(messageData).pipe(
-       takeUntil(this.destroy$)
+       takeUntil(this.destroy$),
+       catchError(error => this.errorHandler.handleError(error, 'Erro ao enviar mensagem'))
      ).subscribe({
        next: (message: Message) => {
          this.resetComposer();
          this.messageSent.emit(message);
+         
+         // Announce message sent for screen readers
+         this.accessibilityService.announce('Mensagem enviada');
          
          // Focus back to input
          setTimeout(() => {
@@ -900,9 +934,14 @@ export class ComposerComponent implements OnInit, OnDestroy {
            }
          });
        },
-       error: (error) => {
-         console.error('Error sending message:', error);
+       error: () => {
          this.sending = false;
+         // Focus back to input on error
+         setTimeout(() => {
+           if (this.messageInput) {
+             this.messageInput.nativeElement.focus();
+           }
+         });
        }
      });
    }
@@ -1172,5 +1211,19 @@ export class ComposerComponent implements OnInit, OnDestroy {
     } else {
       return `${this.typingUsers.length} pessoas estão digitando...`;
     }
+  }
+
+  openFileDialog(): void {
+    this.selectFile('any');
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+    
+    // Clean up keyboard shortcuts
+    this.keyboardShortcuts.forEach(shortcut => {
+      this.keyboardService.unregisterShortcut(shortcut.key, shortcut.ctrlKey, shortcut.altKey, shortcut.shiftKey);
+    });
   }
 }
