@@ -1,4 +1,5 @@
-import { Injectable } from '@angular/core';
+import { Injectable, PLATFORM_ID, Inject } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import { BehaviorSubject, Observable } from 'rxjs';
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
@@ -21,9 +22,14 @@ export class RealtimeService {
   public connectionStatus$ = this.connectionStatusSubject.asObservable();
   public isConnected$ = this.connectionStatusSubject.asObservable();
 
-  constructor(private tokenStorage: TokenStorageService) {
-    // Make Pusher available globally
-    window.Pusher = Pusher;
+  constructor(
+    private tokenStorage: TokenStorageService,
+    @Inject(PLATFORM_ID) private platformId: Object
+  ) {
+    // Make Pusher available globally only in browser
+    if (isPlatformBrowser(this.platformId)) {
+      window.Pusher = Pusher;
+    }
   }
 
   initialize(): void {
