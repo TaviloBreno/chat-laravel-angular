@@ -409,7 +409,7 @@ export class ChatComponent implements OnInit, OnDestroy {
   }
 
   private subscribeToReconnectionStatus(): void {
-    this.realtimeService.isReconnecting$.pipe(
+    this.realtimeService.reconnecting$.pipe(
       takeUntil(this.destroy$)
     ).subscribe(reconnecting => {
       this.isReconnecting = reconnecting;

@@ -84,18 +84,12 @@ export class TypingService {
     return typingUsers.some(event => event.user.id === userId);
   }
 
-  private sendStartTyping(conversationId: number): void {
-    this.chatApiService.startTyping(conversationId).subscribe({
-      next: () => console.log('Started typing notification sent'),
-      error: (error) => console.error('Error sending start typing:', error)
-    });
+  private sendStartTyping(conversationId: number): Observable<any> {
+    return this.chatApiService.startTyping(conversationId);
   }
 
-  private sendStopTyping(conversationId: number): void {
-    this.chatApiService.stopTyping(conversationId).subscribe({
-      next: () => console.log('Stopped typing notification sent'),
-      error: (error) => console.error('Error sending stop typing:', error)
-    });
+  private sendStopTyping(conversationId: number): Observable<any> {
+    return this.chatApiService.stopTyping(conversationId);
   }
 
   private addTypingUser(conversationId: number, event: TypingEvent): void {
@@ -245,7 +239,8 @@ export class TypingService {
     const typingEvent: TypingEvent = {
       user: data.user,
       conversation_id: conversationId,
-      created_at: new Date().toISOString()
+      is_typing: true,
+      timestamp: new Date().toISOString()
     };
     
     this.addTypingUser(conversationId, typingEvent);

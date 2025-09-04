@@ -14,6 +14,7 @@ export interface Message {
   file_name?: string;
   file_size?: number;
   read_receipts?: ReadReceipt[];
+  read_at?: string;
 }
 
 export interface SendMessageRequest {
