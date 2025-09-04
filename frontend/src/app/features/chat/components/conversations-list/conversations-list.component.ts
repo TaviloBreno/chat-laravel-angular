@@ -1,5 +1,6 @@
 import { Component, OnInit, OnDestroy, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -7,7 +8,11 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { Subject, takeUntil, Observable, BehaviorSubject } from 'rxjs';
+import { MatInputModule } from '@angular/material/input';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatSelectModule } from '@angular/material/select';
+import { ScrollingModule } from '@angular/cdk/scrolling';
+import { Subject, takeUntil, Observable, BehaviorSubject, debounceTime, distinctUntilChanged, map, combineLatest } from 'rxjs';
 import { ChatApiService } from '../../../../core/services/chat-api.service';
 import { RealtimeService } from '../../../../core/services/realtime.service';
 import { PresenceService } from '../../../../core/services/presence.service';
@@ -18,13 +23,18 @@ import { Conversation, User, Message } from '../../../../shared/models';
   standalone: true,
   imports: [
     CommonModule,
+    FormsModule,
     MatListModule,
     MatIconModule,
     MatButtonModule,
     MatBadgeModule,
     MatMenuModule,
     MatDividerModule,
-    MatProgressSpinnerModule
+    MatProgressSpinnerModule,
+    MatInputModule,
+    MatFormFieldModule,
+    MatSelectModule,
+    ScrollingModule
   ],
   template: `
     <div class="conversations-container">
@@ -47,6 +57,27 @@ import { Conversation, User, Message } from '../../../../shared/models';
         </mat-menu>
       </div>
       
+      <!-- Search and Filter -->
+      <div class="search-container">
+        <mat-form-field appearance="outline" class="search-field">
+          <mat-label>Buscar conversas</mat-label>
+          <input matInput 
+                 [(ngModel)]="searchTerm" 
+                 (input)="onSearchChange($event)"
+                 placeholder="Digite para buscar...">
+          <mat-icon matSuffix>search</mat-icon>
+        </mat-form-field>
+        
+        <mat-form-field appearance="outline" class="sort-field">
+          <mat-label>Ordenar por</mat-label>
+          <mat-select [(value)]="sortBy" (selectionChange)="onSortChange()">
+            <mat-option value="recent">Mais recentes</mat-option>
+            <mat-option value="name">Nome</mat-option>
+            <mat-option value="unread">Não lidas</mat-option>
+          </mat-select>
+        </mat-form-field>
+      </div>
+      
       <mat-divider></mat-divider>
       
       <!-- Loading State -->
@@ -66,10 +97,21 @@ import { Conversation, User, Message } from '../../../../shared/models';
         </button>
       </div>
       
-      <!-- Conversations List -->
-      <mat-list *ngIf="!loading && conversations.length > 0" class="conversations-list">
-        <mat-list-item 
-          *ngFor="let conversation of conversations; trackBy: trackByConversationId"
+      <!-- Conversations List with Virtual Scrolling -->
+      <div *ngIf="!loading && (filteredConversations$ | async)?.length === 0 && searchTerm" class="no-results">
+        <mat-icon class="no-results-icon">search_off</mat-icon>
+        <h4>Nenhum resultado encontrado</h4>
+        <p>Tente buscar com outros termos</p>
+      </div>
+      
+      <div *ngIf="filteredConversations$ | async as filteredConversations">
+        <cdk-virtual-scroll-viewport 
+          *ngIf="!loading && filteredConversations.length > 0" 
+          itemSize="72" 
+          class="conversations-viewport"
+        >
+          <div 
+            *cdkVirtualFor="let conversation of filteredConversations; trackBy: trackByConversationId"
           [class.selected]="selectedConversationId === conversation.id"
           (click)="selectConversation(conversation)"
           class="conversation-item"
@@ -110,8 +152,9 @@ import { Conversation, User, Message } from '../../../../shared/models';
               </div>
             </div>
           </div>
-        </mat-list-item>
-      </mat-list>
+          </div>
+        </cdk-virtual-scroll-viewport>
+      </div>
     </div>
   `,
   styles: [`
@@ -135,6 +178,56 @@ import { Conversation, User, Message } from '../../../../shared/models';
       margin: 0;
       font-weight: 500;
       color: #333;
+    }
+    
+    .search-container {
+      padding: 16px;
+      display: flex;
+      gap: 12px;
+      background: #fafafa;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .search-field {
+      flex: 2;
+    }
+    
+    .sort-field {
+      flex: 1;
+      min-width: 120px;
+    }
+    
+    .search-field .mat-mdc-form-field,
+    .sort-field .mat-mdc-form-field {
+      font-size: 14px;
+    }
+    
+    .no-results {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      text-align: center;
+      color: #666;
+    }
+    
+    .no-results-icon {
+      font-size: 3rem;
+      width: 3rem;
+      height: 3rem;
+      color: #ccc;
+      margin-bottom: 1rem;
+    }
+    
+    .no-results h4 {
+      margin: 0 0 0.5rem 0;
+      color: #666;
+    }
+    
+    .no-results p {
+      margin: 0;
+      color: #999;
     }
     
     .loading-container {
@@ -179,10 +272,13 @@ import { Conversation, User, Message } from '../../../../shared/models';
       color: #999;
     }
     
-    .conversations-list {
+    .conversations-viewport {
       flex: 1;
-      overflow-y: auto;
-      padding: 0;
+      height: 100%;
+    }
+    
+    .conversations-viewport .cdk-virtual-scroll-content-wrapper {
+      max-width: 100%;
     }
     
     .conversation-item {
@@ -312,14 +408,47 @@ export class ConversationsListComponent implements OnInit, OnDestroy {
   loading = true;
   onlineUsers: User[] = [];
   
+  // Search and filtering
+  searchTerm = '';
+  sortBy: 'recent' | 'name' | 'unread' = 'recent';
+  filteredConversations$: Observable<Conversation[]>;
+  
   private destroy$ = new Subject<void>();
   private conversationsSubject = new BehaviorSubject<Conversation[]>([]);
+  private searchSubject = new BehaviorSubject<string>('');
+  private sortSubject = new BehaviorSubject<string>('recent');
 
   constructor(
     private chatApiService: ChatApiService,
     private realtimeService: RealtimeService,
     private presenceService: PresenceService
-  ) {}
+  ) {
+    // Setup filtered conversations stream
+    this.filteredConversations$ = combineLatest([
+      this.conversationsSubject.asObservable(),
+      this.searchSubject.asObservable().pipe(
+        debounceTime(300),
+        distinctUntilChanged()
+      ),
+      this.sortSubject.asObservable()
+    ]).pipe(
+      map(([conversations, searchTerm, sortBy]) => {
+        let filtered = conversations;
+        
+        // Apply search filter
+        if (searchTerm.trim()) {
+          const term = searchTerm.toLowerCase().trim();
+          filtered = conversations.filter(conv => 
+            this.getConversationName(conv).toLowerCase().includes(term) ||
+            this.getLastMessagePreview(conv).toLowerCase().includes(term)
+          );
+        }
+        
+        // Apply sorting
+        return this.sortConversations(filtered, sortBy as any);
+      })
+    );
+  }
 
   ngOnInit(): void {
     this.loadConversations();
@@ -479,5 +608,52 @@ export class ConversationsListComponent implements OnInit, OnDestroy {
     // This should get the current user ID from AuthService
     // For now, we'll return a placeholder
     return 1;
+  }
+
+  // Search and Sort Methods
+  onSearchChange(event: any): void {
+    const searchTerm = event.target.value;
+    this.searchTerm = searchTerm;
+    this.searchSubject.next(searchTerm);
+  }
+
+  onSortChange(): void {
+    this.sortSubject.next(this.sortBy);
+  }
+
+  private sortConversations(conversations: Conversation[], sortBy: 'recent' | 'name' | 'unread'): Conversation[] {
+    const sorted = [...conversations];
+    
+    switch (sortBy) {
+      case 'recent':
+        return sorted.sort((a, b) => {
+          const dateA = new Date(a.updated_at).getTime();
+          const dateB = new Date(b.updated_at).getTime();
+          return dateB - dateA; // Most recent first
+        });
+        
+      case 'name':
+        return sorted.sort((a, b) => {
+          const nameA = this.getConversationName(a).toLowerCase();
+          const nameB = this.getConversationName(b).toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+        
+      case 'unread':
+        return sorted.sort((a, b) => {
+          const unreadA = this.getUnreadCount(a);
+          const unreadB = this.getUnreadCount(b);
+          if (unreadA === unreadB) {
+            // If same unread count, sort by recent
+            const dateA = new Date(a.updated_at).getTime();
+            const dateB = new Date(b.updated_at).getTime();
+            return dateB - dateA;
+          }
+          return unreadB - unreadA; // Most unread first
+        });
+        
+      default:
+        return sorted;
+    }
   }
 }

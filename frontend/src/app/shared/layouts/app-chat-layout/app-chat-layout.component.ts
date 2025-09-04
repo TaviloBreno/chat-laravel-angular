@@ -7,6 +7,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatDividerModule } from '@angular/material/divider';
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { Subject, takeUntil } from 'rxjs';
 import { AuthService } from '../../../core/services/auth.service';
@@ -25,6 +26,7 @@ import { ConversationsListComponent } from '../../../features/chat/components/co
     MatIconModule,
     MatMenuModule,
     MatTooltipModule,
+    MatDividerModule,
     ConversationsListComponent
   ],
   template: `
@@ -220,7 +222,7 @@ export class AppChatLayoutComponent implements OnInit, OnDestroy {
     this.authService.logout();
   }
   
-  @HostListener('window:resize', ['$event'])
+  @HostListener('window:resize')
   onResize(): void {
     // Força reavaliação do layout em redimensionamento
   }
