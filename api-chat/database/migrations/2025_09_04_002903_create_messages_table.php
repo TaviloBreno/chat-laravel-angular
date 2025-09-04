@@ -19,6 +19,7 @@ return new class extends Migration
             $table->string('type')->default('text'); // text, image, file, etc.
             $table->json('meta')->nullable(); // metadata adicional
             $table->timestamps();
+            $table->softDeletes();
         });
     }
 

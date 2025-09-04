@@ -39,7 +39,7 @@ class ConversationPolicy
     {
         // Apenas admins podem atualizar conversas
         $userRole = $conversation->users()->where('user_id', $user->id)->first();
-        return $userRole && $userRole->pivot->role === 'admin';
+        return $userRole && $userRole->pivot && $userRole->pivot->role === 'admin';
     }
 
     /**
@@ -58,7 +58,7 @@ class ConversationPolicy
     {
         // Apenas admins podem gerenciar participantes
         $userRole = $conversation->users()->where('user_id', $user->id)->first();
-        return $userRole && $userRole->pivot->role === 'admin';
+        return $userRole && $userRole->pivot && $userRole->pivot->role === 'admin';
     }
 
     /**
