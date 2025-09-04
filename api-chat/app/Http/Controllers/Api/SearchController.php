@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\SearchRequest;
 use App\Models\Message;
 use App\Models\User;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class SearchController extends Controller
@@ -13,13 +13,8 @@ class SearchController extends Controller
     /**
      * Search messages and users
      */
-    public function search(Request $request)
+    public function search(SearchRequest $request)
     {
-        $request->validate([
-            'query' => 'required|string|min:2|max:255',
-            'type' => 'sometimes|in:messages,users,all',
-            'conversation_id' => 'sometimes|exists:conversations,id',
-        ]);
 
         $query = $request->input('query');
         $type = $request->input('type', 'all');

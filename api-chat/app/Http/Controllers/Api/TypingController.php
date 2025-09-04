@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Controller;
+use App\Http\Requests\TypingRequest;
 use App\Events\TypingStarted;
 use App\Events\TypingStopped;
-use App\Http\Controllers\Controller;
 use App\Models\Conversation;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class TypingController extends Controller
@@ -14,18 +14,9 @@ class TypingController extends Controller
     /**
      * Handle typing indicator
      */
-    public function typing(Request $request, Conversation $conversation)
+    public function typing(TypingRequest $request, Conversation $conversation)
     {
         $user = Auth::user();
-        
-        // Verificar se o usuário faz parte da conversa
-        if (!$conversation->users()->where('user_id', $user->id)->exists()) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        $request->validate([
-            'action' => 'required|in:start,stop',
-        ]);
 
         $action = $request->input('action');
         

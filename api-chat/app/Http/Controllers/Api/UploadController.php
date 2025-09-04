@@ -13,8 +13,7 @@ class UploadController extends Controller
      * Upload file
      */
     public function store(UploadFileRequest $request)
-    {    'type' => 'sometimes|in:image,document,audio,video',
-        ]);
+    {
 
         $file = $request->file('file');
         $originalName = $file->getClientOriginalName();
