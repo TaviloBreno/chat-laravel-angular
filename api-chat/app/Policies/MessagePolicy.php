@@ -53,7 +53,7 @@ class MessagePolicy
         }
         
         $userRole = $message->conversation->users()->where('user_id', $user->id)->first();
-        return $userRole && $userRole->pivot->role === 'admin';
+        return $userRole && $userRole->pivot && $userRole->pivot->role === 'admin';
     }
 
     /**
