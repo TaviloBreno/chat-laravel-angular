@@ -248,7 +248,7 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
   
   private destroy$ = new Subject<void>();
   private messagesSubject = new BehaviorSubject<Message[]>([]);
-  private currentCursor: string | null = null;
+  private currentCursor: string | null | undefined = null;
   private shouldScrollToBottom = true;
   private lastScrollHeight = 0;
 
@@ -296,7 +296,7 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
     ).subscribe({
       next: (response: CursorPage<Message>) => {
         this.messages = response.data.reverse(); // Reverse to show oldest first
-        this.currentCursor = response.next_cursor;
+        this.currentCursor = response.next_cursor || null;
         this.hasMoreMessages = !!response.next_cursor;
         this.messagesSubject.next([...this.messages]);
         this.loading = false;
@@ -316,13 +316,13 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
     this.loadingMore = true;
     const previousScrollHeight = this.messagesList.nativeElement.scrollHeight;
 
-    this.chatApiService.getMessages(this.conversation.id, this.currentCursor).pipe(
+    this.chatApiService.getMessages(this.conversation.id, { cursor: this.currentCursor }).pipe(
       takeUntil(this.destroy$)
     ).subscribe({
       next: (response: CursorPage<Message>) => {
         const newMessages = response.data.reverse();
         this.messages = [...newMessages, ...this.messages];
-        this.currentCursor = response.next_cursor;
+        this.currentCursor = response.next_cursor || null;
         this.hasMoreMessages = !!response.next_cursor;
         this.messagesSubject.next([...this.messages]);
         this.loadingMore = false;
@@ -343,21 +343,21 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
 
   private setupRealtimeListeners(): void {
     // Listen for new messages
-    this.realtimeService.listenToPrivateChannel('user', 'MessageSent', (event: any) => {
+    this.realtimeService.private('user').listen('MessageSent', (event: any) => {
       if (this.conversation && event.message.conversation_id === this.conversation.id) {
         this.addNewMessage(event.message);
       }
     });
 
     // Listen for message updates
-    this.realtimeService.listenToPrivateChannel('user', 'MessageUpdated', (event: any) => {
+    this.realtimeService.private('user').listen('MessageUpdated', (event: any) => {
       if (this.conversation && event.message.conversation_id === this.conversation.id) {
         this.updateMessage(event.message);
       }
     });
 
     // Listen for message deletions
-    this.realtimeService.listenToPrivateChannel('user', 'MessageDeleted', (event: any) => {
+    this.realtimeService.private('user').listen('MessageDeleted', (event: any) => {
       if (this.conversation && event.conversation_id === this.conversation.id) {
         this.removeMessage(event.message_id);
       }
@@ -422,7 +422,7 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
     const currentMessage = this.messages[index];
     const nextMessage = this.messages[index + 1];
     
-    return currentMessage.user_id !== nextMessage.user_id || !this.isMessageGrouped(index + 1);
+    return currentMessage.user.id !== nextMessage.user.id || !this.isMessageGrouped(index + 1);
   }
 
   shouldShowTimestamp(index: number): boolean {
@@ -434,7 +434,7 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
     const nextMessage = this.messages[index + 1];
     
     // Show timestamp if messages are from different users or have significant time gap
-    if (currentMessage.user_id !== nextMessage.user_id) {
+    if (currentMessage.user.id !== nextMessage.user.id) {
       return true;
     }
     
@@ -451,7 +451,7 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
     const previousMessage = this.messages[index - 1];
     
     // Group messages from same user within 5 minutes
-    if (currentMessage.user_id !== previousMessage.user_id) {
+    if (currentMessage.user.id !== previousMessage.user.id) {
       return false;
     }
     
@@ -480,7 +480,7 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
   }
 
   isOwnMessage(message: Message): boolean {
-    return message.user_id === this.getCurrentUserId();
+    return message.user.id === this.getCurrentUserId();
   }
 
   onMessageDeleted(messageId: number): void {

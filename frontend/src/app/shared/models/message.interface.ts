@@ -3,7 +3,7 @@ import { User } from './user.interface';
 export interface Message {
   id: number;
   body: string;
-  type: 'text' | 'image' | 'file';
+  type: 'text' | 'image' | 'file' | 'system';
   conversation_id: number;
   user: User;
   created_at: string;

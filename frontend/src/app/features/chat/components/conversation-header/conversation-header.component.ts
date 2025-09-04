@@ -41,10 +41,10 @@ import { Conversation, User } from '../../../../shared/models';
         <div class="avatar-container">
           <div class="avatar" [class.group]="conversation.type === 'group'">
             <mat-icon *ngIf="conversation.type === 'group'">group</mat-icon>
-            <mat-icon *ngIf="conversation.type === 'direct'">person</mat-icon>
+            <mat-icon *ngIf="conversation.type === 'private'">person</mat-icon>
           </div>
           <div 
-            *ngIf="isUserOnline() && conversation.type === 'direct'" 
+            *ngIf="isUserOnline() && conversation.type === 'private'" 
             class="online-indicator"
           ></div>
         </div>
@@ -54,7 +54,7 @@ import { Conversation, User } from '../../../../shared/models';
           <h3 class="conversation-name">{{ getConversationName() }}</h3>
           <div class="conversation-status">
             <!-- Online Status for Direct Conversations -->
-            <span *ngIf="conversation.type === 'direct'" class="status-text">
+            <span *ngIf="conversation.type === 'private'" class="status-text">
               {{ isUserOnline() ? 'Online' : 'Offline' }}
             </span>
             
@@ -362,7 +362,8 @@ export class ConversationHeaderComponent implements OnInit, OnDestroy {
     this.presenceService.onlineUsers$.pipe(
       takeUntil(this.destroy$)
     ).subscribe(users => {
-      this.onlineUsers = users;
+      // Convert Map to array for template usage
+      this.onlineUsers = Array.from(users.values()).flat();
     });
   }
 
@@ -370,11 +371,14 @@ export class ConversationHeaderComponent implements OnInit, OnDestroy {
     this.typingService.typingUsers$.pipe(
       takeUntil(this.destroy$)
     ).subscribe(users => {
-      this.typingUsers = users.filter(user => 
-        this.conversation && 
-        user.conversation_id === this.conversation.id &&
-        user.user_id !== this.getCurrentUserId()
-      );
+      // Convert Map to array and filter typing users
+      const typingArray = Array.from(users.values()).flat();
+      const filteredTypingEvents = typingArray.filter((event: any) =>
+         this.conversation && 
+         event.conversation_id === this.conversation.id &&
+         event.user.id !== this.getCurrentUserId()
+       );
+       this.typingUsers = filteredTypingEvents.map((event: any) => event.user);
     });
   }
 
@@ -399,7 +403,7 @@ export class ConversationHeaderComponent implements OnInit, OnDestroy {
   }
 
   isUserOnline(): boolean {
-    if (!this.conversation || this.conversation.type !== 'direct') {
+    if (!this.conversation || this.conversation.type !== 'private') {
       return false;
     }
     

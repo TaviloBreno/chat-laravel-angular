@@ -79,10 +79,10 @@ import { Conversation, User, Message } from '../../../../shared/models';
             <div class="avatar-container">
               <div class="avatar" [class.group]="conversation.type === 'group'">
                 <mat-icon *ngIf="conversation.type === 'group'">group</mat-icon>
-                <mat-icon *ngIf="conversation.type === 'direct'">person</mat-icon>
+                <mat-icon *ngIf="conversation.type === 'private'">person</mat-icon>
               </div>
               <div 
-                *ngIf="isUserOnline(conversation) && conversation.type === 'direct'" 
+                *ngIf="isUserOnline(conversation) && conversation.type === 'private'" 
                 class="online-indicator"
               ></div>
             </div>
@@ -351,12 +351,12 @@ export class ConversationsListComponent implements OnInit, OnDestroy {
 
   private setupRealtimeListeners(): void {
     // Listen for new messages
-    this.realtimeService.listenToPrivateChannel('user', 'MessageSent', (event: any) => {
+    this.realtimeService.private('user').listen('MessageSent', (event: any) => {
       this.updateConversationWithNewMessage(event.message);
     });
 
     // Listen for conversation updates
-    this.realtimeService.listenToPrivateChannel('user', 'ConversationUpdated', (event: any) => {
+    this.realtimeService.private('user').listen('ConversationUpdated', (event: any) => {
       this.updateConversation(event.conversation);
     });
   }
@@ -365,7 +365,8 @@ export class ConversationsListComponent implements OnInit, OnDestroy {
     this.presenceService.onlineUsers$.pipe(
       takeUntil(this.destroy$)
     ).subscribe(users => {
-      this.onlineUsers = users;
+      // Convert Map to array for template usage
+      this.onlineUsers = Array.from(users.values()).flat();
     });
   }
 
@@ -462,7 +463,7 @@ export class ConversationsListComponent implements OnInit, OnDestroy {
   }
 
   isUserOnline(conversation: Conversation): boolean {
-    if (conversation.type !== 'direct') {
+    if (conversation.type !== 'private') {
       return false;
     }
     
