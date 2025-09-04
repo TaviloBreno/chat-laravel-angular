@@ -122,7 +122,7 @@ class MessageController extends Controller
 
         $message->delete();
         
-        return response()->json(['message' => 'Message deleted successfully']);
+        return response()->noContent();
     }
 
     /**
