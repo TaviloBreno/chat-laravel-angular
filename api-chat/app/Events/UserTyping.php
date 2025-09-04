@@ -2,8 +2,9 @@
 
 namespace App\Events;
 
-use App\Models\Message;
-use App\Http\Resources\MessageResource;
+use App\Models\User;
+use App\Models\Conversation;
+use App\Http\Resources\UserResource;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
@@ -12,18 +13,22 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class MessageSent implements ShouldBroadcast
+class UserTyping implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public $message;
+    public $user;
+    public $conversation;
+    public $isTyping;
 
     /**
      * Create a new event instance.
      */
-    public function __construct(Message $message)
+    public function __construct(User $user, Conversation $conversation, bool $isTyping = true)
     {
-        $this->message = $message;
+        $this->user = $user;
+        $this->conversation = $conversation;
+        $this->isTyping = $isTyping;
     }
 
     /**
@@ -34,7 +39,7 @@ class MessageSent implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('private-conversation.' . $this->message->conversation_id),
+            new PrivateChannel('private-conversation.' . $this->conversation->id),
         ];
     }
 
@@ -46,7 +51,9 @@ class MessageSent implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'message' => new MessageResource($this->message->load(['user', 'conversation'])),
+            'user' => new UserResource($this->user),
+            'conversation_id' => $this->conversation->id,
+            'is_typing' => $this->isTyping,
         ];
     }
 
@@ -57,6 +64,6 @@ class MessageSent implements ShouldBroadcast
      */
     public function broadcastAs(): string
     {
-        return 'message.sent';
+        return 'user.typing';
     }
 }
