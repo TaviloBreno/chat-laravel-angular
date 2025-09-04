@@ -12,6 +12,7 @@ import { Subject, takeUntil } from 'rxjs';
 import { ChatApiService } from '../../../../core/services/chat-api.service';
 import { TypingService } from '../../../../core/services/typing.service';
 import { Conversation, Message, SendMessageRequest } from '../../../../shared/models';
+import { FileSizePipe } from '../../../../shared/pipes';
 
 @Component({
   selector: 'app-composer',
@@ -25,7 +26,8 @@ import { Conversation, Message, SendMessageRequest } from '../../../../shared/mo
     MatIconModule,
     MatMenuModule,
     MatProgressBarModule,
-    MatTooltipModule
+    MatTooltipModule,
+    FileSizePipe
   ],
   template: `
     <div class="composer-container" *ngIf="conversation">
@@ -101,7 +103,7 @@ import { Conversation, Message, SendMessageRequest } from '../../../../shared/mo
                  
                  <div class="file-info">
                    <span class="file-name" [title]="file.name">{{ file.name }}</span>
-                   <span class="file-size">{{ formatFileSize(file.size) }}</span>
+                   <span class="file-size">{{ file.size | fileSize }}</span>
                  </div>
                  
                  <button type="button" 
@@ -1047,7 +1049,7 @@ export class ComposerComponent implements OnInit, OnDestroy {
     if (file.size > this.maxFileSize) {
       return {
         isValid: false,
-        error: `Arquivo muito grande. Máximo permitido: ${this.formatFileSize(this.maxFileSize)}`
+        error: `Arquivo muito grande. Máximo permitido: ${this.maxFileSize} bytes`
       };
     }
     
@@ -1080,13 +1082,7 @@ export class ComposerComponent implements OnInit, OnDestroy {
     }
   }
 
-  formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  }
+
 
   removeFile(index: number): void {
     const file = this.selectedFiles[index];
