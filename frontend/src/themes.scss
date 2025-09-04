@@ -1,0 +1,114 @@
+@use '@angular/material' as mat;
+
+// Definir paletas de cores personalizadas
+$custom-primary: mat.define-palette(mat.$indigo-palette);
+$custom-accent: mat.define-palette(mat.$pink-palette, A200, A100, A400);
+$custom-warn: mat.define-palette(mat.$red-palette);
+
+// Tema claro
+$light-theme: mat.define-light-theme((
+  color: (
+    primary: $custom-primary,
+    accent: $custom-accent,
+    warn: $custom-warn,
+  ),
+  typography: mat.define-typography-config(),
+  density: 0,
+));
+
+// Tema escuro
+$dark-theme: mat.define-dark-theme((
+  color: (
+    primary: $custom-primary,
+    accent: $custom-accent,
+    warn: $custom-warn,
+  ),
+  typography: mat.define-typography-config(),
+  density: 0,
+));
+
+// Aplicar tema padrão (claro)
+@include mat.all-component-themes($light-theme);
+
+// Estilos para tema claro
+.light-theme {
+  @include mat.all-component-colors($light-theme);
+  
+  --background-color: #fafafa;
+  --surface-color: #ffffff;
+  --text-primary: rgba(0, 0, 0, 0.87);
+  --text-secondary: rgba(0, 0, 0, 0.6);
+  --divider-color: rgba(0, 0, 0, 0.12);
+  --chat-bubble-sent: #e3f2fd;
+  --chat-bubble-received: #f5f5f5;
+  --sidebar-background: #ffffff;
+  --header-background: mat.get-color-from-palette($custom-primary, 500);
+}
+
+// Estilos para tema escuro
+.dark-theme {
+  @include mat.all-component-colors($dark-theme);
+  
+  --background-color: #121212;
+  --surface-color: #1e1e1e;
+  --text-primary: rgba(255, 255, 255, 0.87);
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --divider-color: rgba(255, 255, 255, 0.12);
+  --chat-bubble-sent: #1976d2;
+  --chat-bubble-received: #2e2e2e;
+  --sidebar-background: #1e1e1e;
+  --header-background: mat.get-color-from-palette($custom-primary, 700);
+}
+
+// Estilos globais para o chat
+.chat-layout {
+  background-color: var(--background-color);
+  color: var(--text-primary);
+}
+
+.app-header {
+  background-color: var(--header-background) !important;
+}
+
+.app-sidenav {
+  background-color: var(--sidebar-background);
+}
+
+.main-content {
+  background-color: var(--background-color);
+}
+
+// Estilos para mensagens
+.message-bubble {
+  &.sent {
+    background-color: var(--chat-bubble-sent);
+  }
+  
+  &.received {
+    background-color: var(--chat-bubble-received);
+  }
+}
+
+// Transições suaves para mudança de tema
+* {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+// Scrollbar personalizada
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--divider-color);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
