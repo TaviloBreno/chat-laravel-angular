@@ -1,0 +1,202 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Conversation;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class ConversationController extends Controller
+{
+    /**
+     * Display a listing of the resource.
+     */
+    public function index()
+    {
+        $user = Auth::user();
+        
+        $conversations = $user->conversations()
+            ->with(['users', 'owner', 'messages' => function ($query) {
+                $query->latest()->limit(1);
+            }])
+            ->get();
+
+        return response()->json($conversations);
+    }
+
+    /**
+     * Show the form for creating a new resource.
+     */
+    public function create()
+    {
+        //
+    }
+
+    /**
+     * Store a newly created resource in storage.
+     */
+    public function store(Request $request)
+    {
+        $request->validate([
+            'type' => 'required|in:private,group',
+            'title' => 'required_if:type,group|string|max:255',
+            'user_ids' => 'required|array|min:1',
+            'user_ids.*' => 'exists:users,id',
+        ]);
+
+        $user = Auth::user();
+        
+        // Para conversas privadas, verificar se já existe uma conversa entre os usuários
+        if ($request->type === 'private' && count($request->user_ids) === 1) {
+            $otherUserId = $request->user_ids[0];
+            $existingConversation = $user->conversations()
+                ->where('type', 'private')
+                ->whereHas('users', function ($query) use ($otherUserId) {
+                    $query->where('user_id', $otherUserId);
+                })
+                ->first();
+
+            if ($existingConversation) {
+                return response()->json($existingConversation->load(['users', 'owner']));
+            }
+        }
+
+        $conversation = Conversation::create([
+            'type' => $request->type,
+            'title' => $request->title,
+            'owner_id' => $user->id,
+        ]);
+
+        // Adicionar o criador da conversa
+        $conversation->users()->attach($user->id, ['role' => 'admin']);
+        
+        // Adicionar outros usuários
+        foreach ($request->user_ids as $userId) {
+            if ($userId !== $user->id) {
+                $conversation->users()->attach($userId, ['role' => 'member']);
+            }
+        }
+
+        return response()->json($conversation->load(['users', 'owner']), 201);
+    }
+
+    /**
+     * Display the specified resource.
+     */
+    public function show(Conversation $conversation)
+    {
+        $user = Auth::user();
+        
+        // Verificar se o usuário faz parte da conversa
+        if (!$conversation->users()->where('user_id', $user->id)->exists()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $conversation->load(['users', 'owner', 'messages.user']);
+        
+        return response()->json($conversation);
+    }
+
+    /**
+     * Show the form for editing the specified resource.
+     */
+    public function edit(string $id)
+    {
+        //
+    }
+
+    /**
+     * Update the specified resource in storage.
+     */
+    public function update(Request $request, Conversation $conversation)
+    {
+        $user = Auth::user();
+        
+        // Verificar se o usuário é admin da conversa
+        $userRole = $conversation->users()->where('user_id', $user->id)->first();
+        if (!$userRole || $userRole->pivot->role !== 'admin') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'title' => 'sometimes|string|max:255',
+        ]);
+
+        $conversation->update($request->only(['title']));
+        
+        return response()->json($conversation->load(['users', 'owner']));
+    }
+
+    /**
+     * Remove the specified resource from storage.
+     */
+    public function destroy(Conversation $conversation)
+    {
+        $user = Auth::user();
+        
+        // Apenas o owner pode deletar a conversa
+        if ($conversation->owner_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $conversation->delete();
+        
+        return response()->json(['message' => 'Conversation deleted successfully']);
+    }
+
+    /**
+     * Add user to conversation
+     */
+    public function addUser(Request $request, Conversation $conversation)
+    {
+        $user = Auth::user();
+        
+        // Verificar se o usuário é admin da conversa
+        $userRole = $conversation->users()->where('user_id', $user->id)->first();
+        if (!$userRole || $userRole->pivot->role !== 'admin') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'user_id' => 'required|exists:users,id',
+            'role' => 'sometimes|in:admin,member',
+        ]);
+
+        $role = $request->role ?? 'member';
+        
+        if (!$conversation->users()->where('user_id', $request->user_id)->exists()) {
+            $conversation->users()->attach($request->user_id, ['role' => $role]);
+        }
+        
+        return response()->json($conversation->load(['users', 'owner']));
+    }
+
+    /**
+     * Remove user from conversation
+     */
+    public function removeUser(Request $request, Conversation $conversation)
+    {
+        $user = Auth::user();
+        
+        // Verificar se o usuário é admin da conversa
+        $userRole = $conversation->users()->where('user_id', $user->id)->first();
+        if (!$userRole || $userRole->pivot->role !== 'admin') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'user_id' => 'required|exists:users,id',
+        ]);
+
+        // Não permitir remover o owner
+        if ($request->user_id == $conversation->owner_id) {
+            return response()->json(['message' => 'Cannot remove conversation owner'], 400);
+        }
+        
+        $conversation->users()->detach($request->user_id);
+        
+        return response()->json($conversation->load(['users', 'owner']));
+    }
+}
