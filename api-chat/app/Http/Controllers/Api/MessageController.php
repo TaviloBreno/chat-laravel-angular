@@ -154,6 +154,51 @@ class MessageController extends Controller
     }
 
     /**
+     * Mark specific messages as read
+     */
+    public function markMessagesAsRead(Request $request, Conversation $conversation)
+    {
+        $user = Auth::user();
+        
+        // Verificar se o usuário faz parte da conversa
+        if (!$conversation->users()->where('user_id', $user->id)->exists()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'message_ids' => 'required|array',
+            'message_ids.*' => 'integer|exists:messages,id'
+        ]);
+
+        $messageIds = $request->input('message_ids');
+        
+        // Verificar se todas as mensagens pertencem à conversa
+        $validMessages = $conversation->messages()
+            ->whereIn('id', $messageIds)
+            ->get();
+
+        foreach ($validMessages as $message) {
+            // Verificar se já foi marcada como lida
+            $existingRead = MessageRead::where('message_id', $message->id)
+                ->where('user_id', $user->id)
+                ->first();
+
+            if (!$existingRead) {
+                MessageRead::create([
+                    'message_id' => $message->id,
+                    'user_id' => $user->id,
+                    'read_at' => now(),
+                ]);
+            }
+        }
+
+        return response()->json([
+            'message' => 'Messages marked as read',
+            'marked_count' => $validMessages->count()
+        ]);
+    }
+
+    /**
      * Mark all messages in conversation as read
      */
     public function markAllAsRead(Request $request, Conversation $conversation)

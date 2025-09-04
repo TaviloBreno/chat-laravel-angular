@@ -77,16 +77,21 @@ interface MessageGroup {
           
           <!-- Messages in this date group -->
           <ng-container *ngFor="let message of group.messages; trackBy: trackByMessageId; let i = index">
-            <app-message-item
-              [message]="message"
-              [isOwn]="isOwnMessage(message)"
-              [showAvatar]="shouldShowAvatarInGroup(group.messages, i)"
-              [showTimestamp]="shouldShowTimestampInGroup(group.messages, i)"
-              [isGrouped]="isMessageGroupedInGroup(group.messages, i)"
-              (messageDeleted)="onMessageDeleted($event)"
-              (messageEdited)="onMessageEdited($event)"
-              (reactionAdded)="onReactionAdded($event)"
-            ></app-message-item>
+            <div 
+              [attr.data-message-id]="message.id"
+              [class.message-observer-target]="!isOwnMessage(message)"
+            >
+              <app-message-item
+                [message]="message"
+                [isOwn]="isOwnMessage(message)"
+                [showAvatar]="shouldShowAvatarInGroup(group.messages, i)"
+                [showTimestamp]="shouldShowTimestampInGroup(group.messages, i)"
+                [isGrouped]="isMessageGroupedInGroup(group.messages, i)"
+                (messageDeleted)="onMessageDeleted($event)"
+                (messageEdited)="onMessageEdited($event)"
+                (reactionAdded)="onReactionAdded($event)"
+              ></app-message-item>
+            </div>
           </ng-container>
         </ng-container>
       </cdk-virtual-scroll-viewport>
@@ -271,6 +276,11 @@ interface MessageGroup {
       height: 18px;
     }
     
+    /* Message observer targets */
+    .message-observer-target {
+      position: relative;
+    }
+    
     /* Custom scrollbar */
     .messages-viewport::-webkit-scrollbar {
       width: 6px;
@@ -332,6 +342,9 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
   private lastScrollHeight = 0;
   private scrollPositionSubject = new BehaviorSubject<number>(0);
   private lastSeenMessageId: number | null = null;
+  private intersectionObserver: IntersectionObserver | null = null;
+  private readStatusQueue = new Set<number>();
+  private readStatusDebounceTimer: any = null;
   
   // Keyboard shortcuts
   keyboardShortcuts: KeyboardShortcut[] = [];
@@ -386,13 +399,26 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
   }
 
   ngOnInit(): void {
-    this.setupRealtimeListeners();
     this.setupScrollListener();
+    this.setupRealtimeListeners();
+    this.setupIntersectionObserver();
   }
 
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+    
+    // Clean up intersection observer
+    if (this.intersectionObserver) {
+      this.intersectionObserver.disconnect();
+      this.intersectionObserver = null;
+    }
+    
+    // Clean up read status timer
+    if (this.readStatusDebounceTimer) {
+      clearTimeout(this.readStatusDebounceTimer);
+      this.readStatusDebounceTimer = null;
+    }
     
     // Clean up keyboard shortcuts
     this.keyboardShortcuts.forEach(shortcut => {
@@ -449,6 +475,9 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
       this.scrollToBottom();
       this.shouldScrollToBottom = false;
     }
+    
+    // Re-observe message elements after view updates
+    this.observeMessageElements();
   }
 
   private loadMessages(): void {
@@ -544,6 +573,98 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
       debounceTime(100)
     ).subscribe(scrollTop => {
       this.updateScrollState(scrollTop);
+    });
+  }
+
+  private setupIntersectionObserver(): void {
+    if (!('IntersectionObserver' in window)) {
+      console.warn('IntersectionObserver not supported');
+      return;
+    }
+
+    const options: IntersectionObserverInit = {
+      root: null, // Use viewport as root
+      rootMargin: '0px',
+      threshold: 0.5 // Message is considered "read" when 50% visible
+    };
+
+    this.intersectionObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const messageElement = entry.target as HTMLElement;
+          const messageId = messageElement.getAttribute('data-message-id');
+          
+          if (messageId) {
+            const id = parseInt(messageId, 10);
+            this.markMessageAsRead(id);
+          }
+        }
+      });
+    }, options);
+
+    // Observe existing message elements
+    this.observeMessageElements();
+  }
+
+  private observeMessageElements(): void {
+    if (!this.intersectionObserver) return;
+
+    // Wait for next tick to ensure DOM is updated
+    setTimeout(() => {
+      const messageElements = document.querySelectorAll('.message-observer-target');
+      messageElements.forEach(element => {
+        this.intersectionObserver!.observe(element);
+      });
+    }, 0);
+  }
+
+  private markMessageAsRead(messageId: number): void {
+    // Only mark messages from other users as read
+    const message = this.messages.find(m => m.id === messageId);
+    if (!message || this.isOwnMessage(message)) {
+      return;
+    }
+
+    // Add to queue for batch processing
+    this.readStatusQueue.add(messageId);
+    
+    // Debounce the API call to avoid too many requests
+    if (this.readStatusDebounceTimer) {
+      clearTimeout(this.readStatusDebounceTimer);
+    }
+
+    this.readStatusDebounceTimer = setTimeout(() => {
+      this.processReadStatusQueue();
+    }, 1000); // Wait 1 second before sending
+  }
+
+  private processReadStatusQueue(): void {
+    if (this.readStatusQueue.size === 0 || !this.conversation) {
+      return;
+    }
+
+    const messageIds = Array.from(this.readStatusQueue);
+    this.readStatusQueue.clear();
+
+    // Send read status to server
+    this.chatApiService.markMessagesAsRead(this.conversation.id, messageIds).pipe(
+      takeUntil(this.destroy$),
+      catchError(error => {
+        console.error('Error marking messages as read:', error);
+        // Re-add failed messages to queue for retry
+        messageIds.forEach(id => this.readStatusQueue.add(id));
+        return [];
+      })
+    ).subscribe(() => {
+      // Update local message status
+      messageIds.forEach(messageId => {
+        const message = this.messages.find(m => m.id === messageId);
+        if (message) {
+          message.read_at = new Date().toISOString();
+        }
+      });
+      
+      this.messagesSubject.next([...this.messages]);
     });
   }
   

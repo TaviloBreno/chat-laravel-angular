@@ -49,6 +49,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/messages/{message}', [MessageController::class, 'update']);
     Route::delete('/messages/{message}', [MessageController::class, 'destroy']);
     Route::post('/messages/{message}/read', [MessageController::class, 'markAsRead']);
+    Route::post('/conversations/{conversation}/messages/read', [MessageController::class, 'markMessagesAsRead']);
     Route::post('/conversations/{conversation}/messages/read-all', [MessageController::class, 'markAllAsRead']);
     
     // Typing indicator routes

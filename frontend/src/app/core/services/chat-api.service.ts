@@ -85,6 +85,10 @@ export class ChatApiService {
     return this.http.post(`${this.baseUrl}/messages/${messageId}/read`, {});
   }
 
+  markMessagesAsRead(conversationId: number, messageIds: number[]): Observable<any> {
+    return this.http.post(`${this.baseUrl}/conversations/${conversationId}/messages/read`, { message_ids: messageIds });
+  }
+
   // Typing indicators
   startTyping(conversationId: number): Observable<any> {
     return this.http.post(`${this.baseUrl}/conversations/${conversationId}/typing/start`, {});

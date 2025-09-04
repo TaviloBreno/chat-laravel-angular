@@ -7,10 +7,12 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatSidenavModule } from '@angular/material/sidenav';
-import { Subject, takeUntil } from 'rxjs';
-import { Router } from '@angular/router';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { Subject, takeUntil, switchMap, filter, catchError, of } from 'rxjs';
+import { Router, ActivatedRoute } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
 import { RealtimeService } from '../../core/services/realtime.service';
+import { ChatApiService } from '../../core/services/chat-api.service';
 import { ConversationsListComponent } from './components/conversations-list/conversations-list.component';
 import { ConversationHeaderComponent } from './components/conversation-header/conversation-header.component';
 import { MessagesThreadComponent } from './components/messages-thread/messages-thread.component';
@@ -29,6 +31,7 @@ import { User, Conversation, Message } from '../../shared/models';
     MatDividerModule,
     MatBadgeModule,
     MatSidenavModule,
+    MatSnackBarModule,
     ConversationsListComponent,
     ConversationHeaderComponent,
     MessagesThreadComponent,
@@ -342,27 +345,47 @@ import { User, Conversation, Message } from '../../shared/models';
 export class ChatComponent implements OnInit, OnDestroy {
   currentUser: User | null = null;
   isConnected = false;
+  isReconnecting = false;
   selectedConversation: Conversation | null = null;
   replyingToMessage: Message | null = null;
   isMobile = false;
-  
+  currentConversationId: number | null = null;
+
   private destroy$ = new Subject<void>();
+  private reconnectSnackBarRef: any = null;
 
   constructor(
     private authService: AuthService,
     private realtimeService: RealtimeService,
-    private router: Router
+    private chatApiService: ChatApiService,
+    private router: Router,
+    private route: ActivatedRoute,
+    private snackBar: MatSnackBar
   ) {}
 
   ngOnInit(): void {
     this.loadCurrentUser();
+    this.initializeRealtimeService();
     this.subscribeToConnection();
+    this.subscribeToReconnectionStatus();
+    this.subscribeToRouteParams();
     this.checkMobileView();
     this.setupResizeListener();
   }
 
   ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+    
+    if (this.currentConversationId) {
+      this.realtimeService.leaveConversation(this.currentConversationId);
+    }
+    
     this.realtimeService.disconnect();
+    
+    if (this.reconnectSnackBarRef) {
+      this.reconnectSnackBarRef.dismiss();
+    }
   }
 
   private loadCurrentUser(): void {
@@ -373,12 +396,87 @@ export class ChatComponent implements OnInit, OnDestroy {
     });
   }
 
+  private initializeRealtimeService(): void {
+    this.realtimeService.initialize();
+  }
+
   private subscribeToConnection(): void {
     this.realtimeService.isConnected$.pipe(
       takeUntil(this.destroy$)
     ).subscribe(connected => {
       this.isConnected = connected;
     });
+  }
+
+  private subscribeToReconnectionStatus(): void {
+    this.realtimeService.isReconnecting$.pipe(
+      takeUntil(this.destroy$)
+    ).subscribe(reconnecting => {
+      this.isReconnecting = reconnecting;
+      
+      if (reconnecting) {
+        this.showReconnectingBanner();
+      } else {
+        this.hideReconnectingBanner();
+      }
+    });
+  }
+
+  private subscribeToRouteParams(): void {
+    this.route.params.pipe(
+      takeUntil(this.destroy$),
+      switchMap(params => {
+        const conversationId = params['id'] ? parseInt(params['id'], 10) : null;
+        
+        // Leave current conversation if exists
+        if (this.currentConversationId && this.currentConversationId !== conversationId) {
+          this.realtimeService.leaveConversation(this.currentConversationId);
+        }
+        
+        this.currentConversationId = conversationId;
+        
+        if (conversationId) {
+          // Load conversation and subscribe to channels
+          return this.chatApiService.getConversation(conversationId).pipe(
+            catchError(error => {
+              console.error('Error loading conversation:', error);
+              this.router.navigate(['/chat']);
+              return of(null);
+            })
+          );
+        }
+        
+        return of(null);
+      }),
+      filter(conversation => conversation !== null)
+    ).subscribe(conversation => {
+      if (conversation) {
+        this.selectedConversation = conversation;
+        this.realtimeService.subscribeToConversation(conversation.id);
+      }
+    });
+  }
+
+  private showReconnectingBanner(): void {
+    if (!this.reconnectSnackBarRef) {
+      this.reconnectSnackBarRef = this.snackBar.open(
+        'Reconectando...', 
+        '', 
+        {
+          duration: 0, // Keep open until manually dismissed
+          horizontalPosition: 'center',
+          verticalPosition: 'top',
+          panelClass: ['reconnecting-snackbar']
+        }
+      );
+    }
+  }
+
+  private hideReconnectingBanner(): void {
+    if (this.reconnectSnackBarRef) {
+      this.reconnectSnackBarRef.dismiss();
+      this.reconnectSnackBarRef = null;
+    }
   }
 
   private checkMobileView(): void {
@@ -423,7 +521,7 @@ export class ChatComponent implements OnInit, OnDestroy {
 
   // Conversation methods
   onConversationSelected(conversation: Conversation): void {
-    this.selectedConversation = conversation;
+    this.router.navigate(['/chat', conversation.id]);
     this.replyingToMessage = null;
   }
 
@@ -433,9 +531,7 @@ export class ChatComponent implements OnInit, OnDestroy {
   }
 
   onBackToConversations(): void {
-    if (this.isMobile) {
-      this.selectedConversation = null;
-    }
+    this.router.navigate(['/chat']);
   }
 
   // Message methods
