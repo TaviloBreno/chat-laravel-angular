@@ -185,14 +185,21 @@ import { Message } from '../../../../shared/models';
           <!-- Message Status (for own messages) -->
           <div *ngIf="isOwn" class="message-status">
             <mat-icon 
-              class="status-icon"
-              [class.sent]="getMessageStatus() === 'sent'"
-              [class.delivered]="getMessageStatus() === 'delivered'"
-              [class.read]="getMessageStatus() === 'read'"
+              class="status-icon" 
+              [class]="getStatusColor()"
               [matTooltip]="getStatusTooltip()"
-            >
+              (click)="getMessageStatus() === 'failed' && onRetryMessage()">
               {{ getStatusIcon() }}
             </mat-icon>
+            
+            <!-- Group read receipts -->
+            <span *ngIf="getReadByCount() > 0" 
+                  class="read-count" 
+                  [matTooltip]="getReadByTooltip()"
+                  matBadge="{{ getReadByCount() }}"
+                  matBadgeSize="small"
+                  matBadgeColor="primary">
+            </span>
           </div>
         </div>
       </div>
@@ -297,10 +304,47 @@ import { Message } from '../../../../shared/models';
       border-left: 3px solid rgba(255, 255, 255, 0.7);
     }
     
+    .text-content {
+      font-size: 14px;
+      line-height: 1.5;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+    }
+    
+    .text-content ::ng-deep a {
+      color: inherit;
+      text-decoration: none;
+      border-bottom: 1px solid currentColor;
+      transition: opacity 0.2s ease;
+    }
+    
+    .text-content ::ng-deep a:hover {
+      opacity: 0.8;
+      text-decoration: underline;
+    }
+    
+    .text-content ::ng-deep .mention {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 12px;
+      font-weight: 500;
+      font-size: 13px;
+      transition: background-color 0.2s ease;
+    }
+    
+    .text-content ::ng-deep .hashtag {
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+    
+    .text-content ::ng-deep .hashtag:hover {
+      opacity: 0.8;
+    }
+    
     .text-content p {
       margin: 0;
-      line-height: 1.4;
-      font-size: 14px;
+      line-height: inherit;
     }
     
     .file-content {
@@ -455,16 +499,30 @@ import { Message } from '../../../../shared/models';
     
     .message-time {
       white-space: nowrap;
+      cursor: help;
+      transition: color 0.2s ease;
+    }
+    
+    .message-time:hover {
+      color: #666;
     }
     
     .edited-indicator {
       font-style: italic;
       opacity: 0.7;
+      cursor: help;
+      transition: opacity 0.2s ease;
+    }
+    
+    .edited-indicator:hover {
+      opacity: 1;
     }
     
     .message-status {
       display: flex;
       align-items: center;
+      gap: 6px;
+      margin-left: 8px;
     }
     
     .status-icon {
@@ -472,6 +530,46 @@ import { Message } from '../../../../shared/models';
       width: 14px;
       height: 14px;
       margin-left: 4px;
+      transition: all 0.2s ease;
+    }
+    
+    .status-icon.text-gray-400 {
+      color: #9e9e9e;
+    }
+    
+    .status-icon.text-gray-500 {
+      color: #757575;
+    }
+    
+    .status-icon.text-blue-500 {
+      color: #2196f3;
+    }
+    
+    .status-icon.text-blue-600 {
+      color: #1976d2;
+    }
+    
+    .status-icon.text-red-500 {
+      color: #f44336;
+      cursor: pointer;
+    }
+    
+    .status-icon.text-red-500:hover {
+      opacity: 0.8;
+      transform: scale(1.1);
+    }
+    
+    .read-count {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 16px;
+      height: 16px;
+      font-size: 10px;
+      font-weight: 500;
+      color: #666;
+      cursor: pointer;
     }
     
     .status-icon.sent {
@@ -492,6 +590,50 @@ import { Message } from '../../../../shared/models';
     
     .delete-option mat-icon {
       color: #f44336;
+    }
+    
+    .message-link {
+      color: #2196f3;
+      text-decoration: none;
+    }
+    
+    .message-link:hover {
+      text-decoration: underline;
+    }
+    
+    .message-item.own .message-link {
+      color: rgba(255, 255, 255, 0.9);
+    }
+    
+    .mention {
+      color: #2196f3;
+      font-weight: 500;
+      background: rgba(33, 150, 243, 0.1);
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+    
+    .message-item.own .mention {
+      color: rgba(255, 255, 255, 0.9);
+      background: rgba(255, 255, 255, 0.2);
+    }
+    
+    .hashtag {
+      color: #4caf50;
+      font-weight: 500;
+    }
+    
+    .message-item.own .hashtag {
+      color: rgba(255, 255, 255, 0.9);
+    }
+    
+    .status-icon.failed {
+      color: #f44336;
+      cursor: pointer;
+    }
+    
+    .status-icon.failed:hover {
+      opacity: 0.8;
     }
     
     /* Responsive adjustments */
@@ -516,6 +658,7 @@ export class MessageItemComponent implements OnInit {
   @Output() messageDeleted = new EventEmitter<number>();
   @Output() messageEdited = new EventEmitter<Message>();
   @Output() reactionAdded = new EventEmitter<{ messageId: number, reaction: string }>();
+  @Output() messageRetry = new EventEmitter<number>();
 
   constructor(private sanitizer: DomSanitizer) {}
 
@@ -689,10 +832,10 @@ export class MessageItemComponent implements OnInit {
   }
 
   getMessageStatus(): 'sending' | 'sent' | 'delivered' | 'read' | 'failed' {
-    if (this.message.failed) return 'failed';
-    if (this.message.read_at) return 'read';
-    if (this.message.delivered_at) return 'delivered';
-    if (this.message.sent_at) return 'sent';
+    // Check if message has any read receipts
+    if (this.message.read_receipts && this.message.read_receipts.length > 0) return 'read';
+    // For now, we'll use created_at as sent indicator since the Message interface doesn't have sent_at/delivered_at
+    if (this.message.created_at) return 'sent';
     return 'sending';
   }
 
@@ -728,11 +871,13 @@ export class MessageItemComponent implements OnInit {
       case 'sending': 
         return 'Enviando mensagem...';
       case 'sent': 
-        return `Enviado em ${this.getFullTimestamp(message.sent_at!)}`;
-      case 'delivered': 
-        return `Entregue em ${this.getFullTimestamp(message.delivered_at!)}`;
+        return `Enviado em ${this.getFullTimestamp(message.created_at)}`;
       case 'read': 
-        return `Lido em ${this.getFullTimestamp(message.read_at!)}`;
+        if (message.read_receipts && message.read_receipts.length > 0) {
+          const latestRead = message.read_receipts[message.read_receipts.length - 1];
+          return `Lido em ${this.getFullTimestamp(latestRead.read_at)}`;
+        }
+        return 'Lido';
       case 'failed': 
         return 'Falha no envio. Clique para tentar novamente.';
       default: 
@@ -742,22 +887,21 @@ export class MessageItemComponent implements OnInit {
   
   getReadByCount(): number {
     // For group messages, count how many users have read the message
-    return this.message.read_by?.length || 0;
+    return this.message.read_receipts?.length || 0;
   }
   
   getReadByTooltip(): string {
-    if (!this.message.read_by || this.message.read_by.length === 0) {
+    if (!this.message.read_receipts || this.message.read_receipts.length === 0) {
       return 'Ninguém leu ainda';
     }
     
-    const readBy = this.message.read_by.slice(0, 3).map(user => user.name).join(', ');
-    const remaining = this.message.read_by.length - 3;
-    
-    if (remaining > 0) {
-      return `Lido por ${readBy} e mais ${remaining} pessoa${remaining > 1 ? 's' : ''}`;
+    // Note: ReadReceipt interface doesn't include user info, so we'll show count for now
+    const count = this.message.read_receipts.length;
+    if (count === 1) {
+      return 'Lido por 1 pessoa';
     }
     
-    return `Lido por ${readBy}`;
+    return `Lido por ${count} pessoas`;
   }
 
   // Event handlers
@@ -800,5 +944,12 @@ export class MessageItemComponent implements OnInit {
   showReactionPicker(): void {
     // Implement reaction picker logic
     console.log('Show reaction picker for message:', this.message.id);
+  }
+
+  onRetryMessage(): void {
+    if (this.getMessageStatus() === 'failed') {
+      // Emit event to retry sending the message
+      this.messageRetry.emit(this.message.id);
+    }
   }
 }

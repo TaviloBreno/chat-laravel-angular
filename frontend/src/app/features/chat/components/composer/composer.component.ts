@@ -8,7 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Subject, takeUntil, debounceTime } from 'rxjs';
+import { Subject, takeUntil } from 'rxjs';
 import { ChatApiService } from '../../../../core/services/chat-api.service';
 import { TypingService } from '../../../../core/services/typing.service';
 import { Conversation, Message, SendMessageRequest } from '../../../../shared/models';
@@ -52,6 +52,18 @@ import { Conversation, Message, SendMessageRequest } from '../../../../shared/mo
         </button>
       </div>
       
+      <!-- Typing Indicator -->
+      <div *ngIf="showTypingIndicator && typingUsers.length > 0" class="typing-indicator">
+        <div class="typing-dots">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <span class="typing-text">
+          {{ getTypingText() }}
+        </span>
+      </div>
+      
       <!-- Main Composer -->
       <div class="composer-main">
         <!-- Attachment Button -->
@@ -59,7 +71,7 @@ import { Conversation, Message, SendMessageRequest } from '../../../../shared/mo
           mat-icon-button 
           class="attachment-button"
           [matMenuTriggerFor]="attachmentMenu"
-          matTooltip="Anexar arquivo"
+          matTooltip="Anexar arquivo (Ctrl+U)"
           [disabled]="sending"
         >
           <mat-icon>attach_file</mat-icon>
@@ -91,7 +103,7 @@ import { Conversation, Message, SendMessageRequest } from '../../../../shared/mo
               (input)="onInput()"
               (focus)="onFocus()"
               (blur)="onBlur()"
-              placeholder="Digite uma mensagem..."
+              placeholder="Digite uma mensagem... (Enter: enviar, Shift+Enter: nova linha, Esc: limpar, Ctrl+K: emoji, Ctrl+U: anexar)"
               rows="1"
               [disabled]="sending"
               class="message-textarea"
@@ -103,7 +115,7 @@ import { Conversation, Message, SendMessageRequest } from '../../../../shared/mo
             mat-icon-button 
             class="emoji-button"
             (click)="toggleEmojiPicker()"
-            matTooltip="Adicionar emoji"
+            matTooltip="Adicionar emoji (Ctrl+K)"
             [disabled]="sending"
           >
             <mat-icon>emoji_emotions</mat-icon>
@@ -271,8 +283,67 @@ import { Conversation, Message, SendMessageRequest } from '../../../../shared/mo
       resize: none;
       min-height: 20px;
       max-height: 120px;
-      overflow-y: auto;
+      overflow-y: hidden;
       line-height: 1.4;
+      transition: height 0.2s ease;
+      font-family: inherit;
+      font-size: 14px;
+    }
+    
+    .typing-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: #f8f9fa;
+      border-radius: 12px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      color: #666;
+      animation: fadeIn 0.3s ease;
+    }
+    
+    .typing-dots {
+      display: flex;
+      gap: 3px;
+    }
+    
+    .typing-dots span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #999;
+      animation: typingDot 1.4s infinite ease-in-out;
+    }
+    
+    .typing-dots span:nth-child(1) {
+      animation-delay: -0.32s;
+    }
+    
+    .typing-dots span:nth-child(2) {
+      animation-delay: -0.16s;
+    }
+    
+    @keyframes typingDot {
+      0%, 80%, 100% {
+        transform: scale(0.8);
+        opacity: 0.5;
+      }
+      40% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+    
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
     
     .emoji-button {
@@ -393,6 +464,8 @@ export class ComposerComponent implements OnInit, OnDestroy {
   showEmojiPicker = false;
   uploadProgress = 0;
   fileAccept = '*/*';
+  showTypingIndicator = false;
+  typingUsers: string[] = [];
   
   commonEmojis = [
     '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣',
@@ -415,7 +488,16 @@ export class ComposerComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
-    // Component initialization
+    // Subscribe to typing events from other users
+    if (this.conversation) {
+      this.typingService.getTypingUsersForConversation(this.conversation.id).pipe(
+        takeUntil(this.destroy$)
+      ).subscribe((typingEvents: any[]) => {
+        // Extract user names from typing events
+        this.typingUsers = typingEvents.map((event: any) => event.user.name);
+        this.showTypingIndicator = this.typingUsers.length > 0;
+      });
+    }
   }
 
   ngOnDestroy(): void {
@@ -425,9 +507,32 @@ export class ComposerComponent implements OnInit, OnDestroy {
   }
 
   onKeyDown(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    // Enhanced keyboard shortcuts
+    if (event.key === 'Enter') {
+      if (event.shiftKey || event.ctrlKey) {
+        // Allow new line with Shift+Enter or Ctrl+Enter
+        return;
+      } else {
+        // Send message with Enter
+        event.preventDefault();
+        this.sendMessage();
+      }
+    } else if (event.key === 'Escape') {
+      // Clear message or close emoji picker with Escape
+      if (this.showEmojiPicker) {
+        this.showEmojiPicker = false;
+      } else if (this.messageText.trim()) {
+        this.messageText = '';
+        this.adjustTextareaHeight();
+      }
+    } else if (event.ctrlKey && event.key === 'k') {
+      // Toggle emoji picker with Ctrl+K
       event.preventDefault();
-      this.sendMessage();
+      this.toggleEmojiPicker();
+    } else if (event.ctrlKey && event.key === 'u') {
+      // Upload file with Ctrl+U
+      event.preventDefault();
+      this.selectFile('any');
     }
   }
 
@@ -447,23 +552,51 @@ export class ComposerComponent implements OnInit, OnDestroy {
   private adjustTextareaHeight(): void {
     if (this.messageInput) {
       const textarea = this.messageInput.nativeElement;
+      const minHeight = 20;
+      const maxHeight = 120;
+      
+      // Reset height to calculate scroll height
       textarea.style.height = 'auto';
-      textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+      
+      // Calculate new height based on content
+      const scrollHeight = textarea.scrollHeight;
+      const newHeight = Math.max(minHeight, Math.min(scrollHeight, maxHeight));
+      
+      // Apply smooth transition
+      textarea.style.height = newHeight + 'px';
+      
+      // Show/hide scrollbar based on content
+      if (scrollHeight > maxHeight) {
+        textarea.style.overflowY = 'auto';
+      } else {
+        textarea.style.overflowY = 'hidden';
+      }
     }
   }
 
   private handleTyping(): void {
     if (!this.conversation) return;
 
-    if (!this.isTyping && this.messageText.trim()) {
+    const hasContent = this.messageText.trim().length > 0;
+    
+    if (hasContent && !this.isTyping) {
+      // Start typing indicator
       this.isTyping = true;
       this.typingService.startTyping(this.conversation.id);
+    } else if (!hasContent && this.isTyping) {
+      // Stop typing immediately if no content
+      this.stopTyping();
+      return;
     }
 
+    // Reset timeout for continuous typing
     this.clearTypingTimeout();
-    this.typingTimeout = setTimeout(() => {
-      this.stopTyping();
-    }, 3000);
+    
+    if (this.isTyping) {
+      this.typingTimeout = setTimeout(() => {
+        this.stopTyping();
+      }, 2000); // Reduced timeout for better responsiveness
+    }
   }
 
   private stopTyping(): void {
@@ -616,5 +749,17 @@ export class ComposerComponent implements OnInit, OnDestroy {
       return `📎 ${message.file_name || 'Arquivo'}`;
     }
     return message.body || 'Mensagem';
+  }
+
+  getTypingText(): string {
+    if (this.typingUsers.length === 0) return '';
+    
+    if (this.typingUsers.length === 1) {
+      return `${this.typingUsers[0]} está digitando...`;
+    } else if (this.typingUsers.length === 2) {
+      return `${this.typingUsers[0]} e ${this.typingUsers[1]} estão digitando...`;
+    } else {
+      return `${this.typingUsers.length} pessoas estão digitando...`;
+    }
   }
 }

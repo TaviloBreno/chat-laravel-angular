@@ -14,7 +14,7 @@ export class TypingService {
   
   private typingSubject = new Subject<{ conversationId: number; isTyping: boolean }>();
   private activeChannels = new Set<string>();
-  private typingTimeouts = new Map<string, any>();
+  private typingTimeouts = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private realtimeService: RealtimeService,
@@ -59,7 +59,7 @@ export class TypingService {
         console.log('User stopped typing:', event);
         this.removeTypingUser(conversationId, event.user.id);
       })
-      .error((error: any) => {
+      .error((error: Error) => {
         console.error('Typing channel error:', error);
       });
 
