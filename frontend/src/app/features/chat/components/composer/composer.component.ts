@@ -8,11 +8,13 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Subject, takeUntil } from 'rxjs';
+import { Subject, takeUntil, catchError } from 'rxjs';
 import { ChatApiService } from '../../../../core/services/chat-api.service';
 import { TypingService } from '../../../../core/services/typing.service';
 import { Conversation, Message, SendMessageRequest } from '../../../../shared/models';
 import { FileSizePipe } from '../../../../shared/pipes';
+import { KeyboardShortcutsDirective } from '../../../../shared/directives';
+import { KeyboardShortcutsService, KeyboardShortcut, ErrorHandlerService, AccessibilityService } from '../../../../shared/services';
 
 @Component({
   selector: 'app-composer',
@@ -27,10 +29,18 @@ import { FileSizePipe } from '../../../../shared/pipes';
     MatMenuModule,
     MatProgressBarModule,
     MatTooltipModule,
-    FileSizePipe
+    FileSizePipe,
+    KeyboardShortcutsDirective
   ],
   template: `
-    <div class="composer-container" *ngIf="conversation">
+    <div 
+      class="composer-container" 
+      *ngIf="conversation"
+      [appKeyboardShortcuts]="keyboardShortcuts"
+      context="composer"
+      role="region"
+      aria-label="Área de composição de mensagem"
+    >
       <!-- File Upload Progress -->
       <div *ngIf="isUploading" class="upload-progress">
         <mat-progress-bar mode="indeterminate"></mat-progress-bar>
@@ -708,11 +718,19 @@ export class ComposerComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
   private typingTimeout: any;
   private isTyping = false;
+  
+  // Keyboard shortcuts
+  keyboardShortcuts: KeyboardShortcut[] = [];
 
   constructor(
     private chatApiService: ChatApiService,
-    private typingService: TypingService
-  ) {}
+    private typingService: TypingService,
+    private keyboardService: KeyboardShortcutsService,
+    private errorHandler: ErrorHandlerService,
+    private accessibilityService: AccessibilityService
+  ) {
+    this.initializeKeyboardShortcuts();
+  }
 
   ngOnInit(): void {
     // Subscribe to typing events from other users
