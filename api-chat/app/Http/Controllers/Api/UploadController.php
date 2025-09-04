@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UploadFileRequest;
+use App\Jobs\ProcessFileUpload;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
 class UploadController extends Controller
@@ -29,6 +31,14 @@ class UploadController extends Controller
         
         // Store file (for now in local storage, can be changed to S3 later)
         $path = $file->storeAs('uploads', $filename, 'public');
+        
+        // Dispatch job for async file processing
+        ProcessFileUpload::dispatch(
+            'public/' . $path,
+            $originalName,
+            $mimeType,
+            Auth::id()
+        );
         
         return response()->json([
             'id' => Str::uuid(),

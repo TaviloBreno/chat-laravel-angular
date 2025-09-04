@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Events\MessageSent;
+use App\Jobs\ProcessMessageNotification;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreMessageRequest;
 use App\Http\Requests\UpdateMessageRequest;
@@ -67,6 +68,9 @@ class MessageController extends Controller
 
         // Disparar evento de broadcasting
         broadcast(new MessageSent($message->load(['user', 'conversation'])));
+        
+        // Processar notificações de forma assíncrona
+        ProcessMessageNotification::dispatch($message);
 
         return new MessageResource($message->load(['user', 'reads']));
     }
