@@ -24,7 +24,7 @@ class ConversationResource extends JsonResource
             'users' => UserResource::collection($this->whenLoaded('users')),
             'last_message' => new MessageResource($this->whenLoaded('lastMessage')),
             'unread_count' => $this->when(isset($this->unread_count), $this->unread_count),
-            'user_role' => $this->when(isset($this->pivot), $this->pivot->role),
+            'user_role' => $this->when(isset($this->pivot), $this->pivot->role ?? 'member'),
             'created_at' => $this->created_at->toISOString(),
             'updated_at' => $this->updated_at->toISOString(),
         ];
