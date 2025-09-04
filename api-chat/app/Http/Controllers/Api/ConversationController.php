@@ -159,4 +159,24 @@ class ConversationController extends Controller
         
         return new ConversationResource($conversation->load(['users', 'owner']));
     }
+
+    /**
+     * Send typing indicator
+     */
+    public function typing(Request $request, Conversation $conversation)
+    {
+        $user = Auth::user();
+        
+        // Verificar se o usuário faz parte da conversa
+        if (!$conversation->users()->where('user_id', $user->id)->exists()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $isTyping = $request->boolean('is_typing', true);
+        
+        // Disparar evento de broadcasting
+        broadcast(new UserTyping($user, $conversation, $isTyping));
+        
+        return response()->json(['message' => 'Typing indicator sent']);
+    }
 }
