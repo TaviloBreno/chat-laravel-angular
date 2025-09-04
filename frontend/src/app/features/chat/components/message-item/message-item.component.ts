@@ -6,6 +6,8 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatBadgeModule } from '@angular/material/badge';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Message } from '../../../../shared/models';
 
 @Component({
@@ -18,7 +20,8 @@ import { Message } from '../../../../shared/models';
     MatMenuModule,
     MatChipsModule,
     MatTooltipModule,
-    MatDividerModule
+    MatDividerModule,
+    MatBadgeModule
   ],
   template: `
     <div 
@@ -54,7 +57,7 @@ import { Message } from '../../../../shared/models';
         >
           <!-- Text Message -->
           <div *ngIf="message.type === 'text'" class="text-content">
-            <p [innerHTML]="formatMessageText(message.body || '')"></p>
+            <div class="message-text" [innerHTML]="formatMessageText(message.body || '')"></div>
           </div>
           
           <!-- File Message -->
@@ -176,8 +179,8 @@ import { Message } from '../../../../shared/models';
         
         <!-- Message Timestamp and Status -->
         <div *ngIf="showTimestamp" class="message-footer">
-          <span class="message-time">{{ formatTime(message.created_at) }}</span>
-          <span *ngIf="message.edited_at" class="edited-indicator">(editada)</span>
+          <span class="message-time" [matTooltip]="getFullTimestamp(message.created_at)">{{ formatTime(message.created_at) }}</span>
+          <span *ngIf="message.edited_at" class="edited-indicator" [matTooltip]="'Editada em ' + getFullTimestamp(message.edited_at)">(editada)</span>
           
           <!-- Message Status (for own messages) -->
           <div *ngIf="isOwn" class="message-status">
@@ -514,7 +517,7 @@ export class MessageItemComponent implements OnInit {
   @Output() messageEdited = new EventEmitter<Message>();
   @Output() reactionAdded = new EventEmitter<{ messageId: number, reaction: string }>();
 
-  constructor() {}
+  constructor(private sanitizer: DomSanitizer) {}
 
   ngOnInit(): void {
     // Component initialization
@@ -529,10 +532,56 @@ export class MessageItemComponent implements OnInit {
       .toUpperCase();
   }
 
-  formatMessageText(text: string): string {
-    // Basic text formatting - convert URLs to links
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    return text.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+  formatMessageText(text: string): SafeHtml {
+    if (!text) return this.sanitizer.bypassSecurityTrustHtml('');
+    
+    let formattedText = text;
+    
+    // Convert URLs to clickable links
+    const urlRegex = /(https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&=]*))/g;
+    formattedText = formattedText.replace(urlRegex, (url) => {
+      const displayUrl = url.length > 50 ? url.substring(0, 47) + '...' : url;
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link">${displayUrl}</a>`;
+    });
+    
+    // Convert email addresses to mailto links
+    const emailRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+    formattedText = formattedText.replace(emailRegex, '<a href="mailto:$1" class="message-link">$1</a>');
+    
+    // Convert phone numbers to tel links (Brazilian format)
+    const phoneRegex = /(\(?\d{2}\)?\s?9?\d{4}-?\d{4})/g;
+    formattedText = formattedText.replace(phoneRegex, '<a href="tel:$1" class="message-link">$1</a>');
+    
+    // Convert mentions (@username)
+    const mentionRegex = /@([a-zA-Z0-9_]+)/g;
+    formattedText = formattedText.replace(mentionRegex, '<span class="mention">@$1</span>');
+    
+    // Convert hashtags (#hashtag)
+    const hashtagRegex = /#([a-zA-Z0-9_]+)/g;
+    formattedText = formattedText.replace(hashtagRegex, '<span class="hashtag">#$1</span>');
+    
+    // Convert common emoji shortcuts to Unicode emojis
+    const emojiMap: { [key: string]: string } = {
+      ':)': '😊', ':-)': '😊', ':(': '😢', ':-(': '😢',
+      ':D': '😃', ':-D': '😃', ':P': '😛', ':-P': '😛',
+      ';)': '😉', ';-)': '😉', ':o': '😮', ':-o': '😮',
+      '<3': '❤️', '</3': '💔', ':thumbsup:': '👍', ':thumbsdown:': '👎',
+      ':fire:': '🔥', ':heart:': '❤️', ':laugh:': '😂', ':cry:': '😭'
+    };
+    
+    Object.keys(emojiMap).forEach(shortcut => {
+      const regex = new RegExp(this.escapeRegExp(shortcut), 'g');
+      formattedText = formattedText.replace(regex, emojiMap[shortcut]);
+    });
+    
+    // Convert line breaks to <br> tags
+    formattedText = formattedText.replace(/\n/g, '<br>');
+    
+    return this.sanitizer.bypassSecurityTrustHtml(formattedText);
+  }
+  
+  private escapeRegExp(string: string): string {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   getFileIcon(fileName: string): string {
@@ -582,9 +631,42 @@ export class MessageItemComponent implements OnInit {
 
   formatTime(dateString: string): string {
     const date = new Date(dateString);
-    return date.toLocaleTimeString('pt-BR', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    const now = new Date();
+    const diffInMs = now.getTime() - date.getTime();
+    const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
+    const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
+    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+    
+    if (diffInMinutes < 1) {
+      return 'agora';
+    } else if (diffInMinutes < 60) {
+      return diffInMinutes === 1 ? '1 minuto atrás' : `${diffInMinutes} minutos atrás`;
+    } else if (diffInHours < 24) {
+      return diffInHours === 1 ? '1 hora atrás' : `${diffInHours} horas atrás`;
+    } else if (diffInDays === 1) {
+      return 'ontem às ' + date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    } else if (diffInDays < 7) {
+      const dayNames = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+      return dayNames[date.getDay()] + ' às ' + date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    } else {
+      return date.toLocaleDateString('pt-BR', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: diffInDays > 365 ? '2-digit' : undefined 
+      }) + ' às ' + date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    }
+  }
+  
+  getFullTimestamp(dateString: string): string {
+    const date = new Date(dateString);
+    return date.toLocaleString('pt-BR', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
     });
   }
 
@@ -606,38 +688,76 @@ export class MessageItemComponent implements OnInit {
     return false;
   }
 
-  getMessageStatus(): 'sent' | 'delivered' | 'read' {
-    // This would determine message status based on read receipts
-    // For now, return 'sent' as placeholder
-    return 'sent';
+  getMessageStatus(): 'sending' | 'sent' | 'delivered' | 'read' | 'failed' {
+    if (this.message.failed) return 'failed';
+    if (this.message.read_at) return 'read';
+    if (this.message.delivered_at) return 'delivered';
+    if (this.message.sent_at) return 'sent';
+    return 'sending';
   }
 
   getStatusIcon(): string {
     const status = this.getMessageStatus();
     switch (status) {
-      case 'sent':
-        return 'check';
-      case 'delivered':
-        return 'done_all';
-      case 'read':
-        return 'done_all';
-      default:
-        return 'schedule';
+      case 'sending': return 'schedule';
+      case 'sent': return 'check';
+      case 'delivered': return 'done_all';
+      case 'read': return 'done_all';
+      case 'failed': return 'error_outline';
+      default: return 'schedule';
+    }
+  }
+
+  getStatusColor(): string {
+    const status = this.getMessageStatus();
+    switch (status) {
+      case 'sending': return 'text-gray-400';
+      case 'sent': return 'text-gray-500';
+      case 'delivered': return 'text-blue-500';
+      case 'read': return 'text-blue-600';
+      case 'failed': return 'text-red-500';
+      default: return 'text-gray-400';
     }
   }
 
   getStatusTooltip(): string {
     const status = this.getMessageStatus();
+    const message = this.message;
+    
     switch (status) {
-      case 'sent':
-        return 'Enviada';
-      case 'delivered':
-        return 'Entregue';
-      case 'read':
-        return 'Lida';
-      default:
-        return 'Enviando...';
+      case 'sending': 
+        return 'Enviando mensagem...';
+      case 'sent': 
+        return `Enviado em ${this.getFullTimestamp(message.sent_at!)}`;
+      case 'delivered': 
+        return `Entregue em ${this.getFullTimestamp(message.delivered_at!)}`;
+      case 'read': 
+        return `Lido em ${this.getFullTimestamp(message.read_at!)}`;
+      case 'failed': 
+        return 'Falha no envio. Clique para tentar novamente.';
+      default: 
+        return '';
     }
+  }
+  
+  getReadByCount(): number {
+    // For group messages, count how many users have read the message
+    return this.message.read_by?.length || 0;
+  }
+  
+  getReadByTooltip(): string {
+    if (!this.message.read_by || this.message.read_by.length === 0) {
+      return 'Ninguém leu ainda';
+    }
+    
+    const readBy = this.message.read_by.slice(0, 3).map(user => user.name).join(', ');
+    const remaining = this.message.read_by.length - 3;
+    
+    if (remaining > 0) {
+      return `Lido por ${readBy} e mais ${remaining} pessoa${remaining > 1 ? 's' : ''}`;
+    }
+    
+    return `Lido por ${readBy}`;
   }
 
   // Event handlers

@@ -3,11 +3,17 @@ import { CommonModule } from '@angular/common';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
-import { Subject, takeUntil, BehaviorSubject } from 'rxjs';
+import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
+import { Subject, takeUntil, BehaviorSubject, combineLatest, map, startWith, debounceTime } from 'rxjs';
 import { ChatApiService } from '../../../../core/services/chat-api.service';
 import { RealtimeService } from '../../../../core/services/realtime.service';
 import { MessageItemComponent } from '../message-item/message-item.component';
 import { Conversation, Message, CursorPage } from '../../../../shared/models';
+
+interface MessageGroup {
+  date: string;
+  messages: Message[];
+}
 
 @Component({
   selector: 'app-messages-thread',
@@ -17,6 +23,7 @@ import { Conversation, Message, CursorPage } from '../../../../shared/models';
     MatProgressSpinnerModule,
     MatIconModule,
     MatButtonModule,
+    ScrollingModule,
     MessageItemComponent
   ],
   template: `
@@ -35,35 +42,42 @@ import { Conversation, Message, CursorPage } from '../../../../shared/models';
         </button>
       </div>
       
-      <!-- Messages List -->
-      <div class="messages-list" #messagesList>
-        <!-- Empty State -->
-        <div *ngIf="!loading && messages.length === 0" class="empty-state">
-          <mat-icon class="empty-icon">chat_bubble_outline</mat-icon>
-          <h4>Nenhuma mensagem</h4>
-          <p>Seja o primeiro a enviar uma mensagem nesta conversa</p>
-        </div>
-        
-        <!-- Messages -->
-        <ng-container *ngFor="let message of messages; trackBy: trackByMessageId; let i = index">
+      <!-- Empty State -->
+      <div *ngIf="!loading && groupedMessages.length === 0" class="empty-state">
+        <mat-icon class="empty-icon">chat_bubble_outline</mat-icon>
+        <h4>Nenhuma mensagem</h4>
+        <p>Seja o primeiro a enviar uma mensagem nesta conversa</p>
+      </div>
+      
+      <!-- Messages Virtual Scroll -->
+      <cdk-virtual-scroll-viewport 
+        *ngIf="!loading && groupedMessages.length > 0"
+        #messagesViewport
+        class="messages-viewport"
+        [itemSize]="estimatedItemSize"
+        (scrolledIndexChange)="onScrolledIndexChange($event)"
+      >
+        <ng-container *cdkVirtualFor="let group of groupedMessages; trackBy: trackByGroup; templateCacheSize: 0">
           <!-- Date Separator -->
-          <div *ngIf="shouldShowDateSeparator(i)" class="date-separator">
-            <span>{{ formatDateSeparator(message.created_at) }}</span>
+          <div class="date-separator">
+            <span>{{ group.date }}</span>
           </div>
           
-          <!-- Message Item -->
-          <app-message-item
-            [message]="message"
-            [isOwn]="isOwnMessage(message)"
-            [showAvatar]="shouldShowAvatar(i)"
-            [showTimestamp]="shouldShowTimestamp(i)"
-            [isGrouped]="isMessageGrouped(i)"
-            (messageDeleted)="onMessageDeleted($event)"
-            (messageEdited)="onMessageEdited($event)"
-            (reactionAdded)="onReactionAdded($event)"
-          ></app-message-item>
+          <!-- Messages in this date group -->
+          <ng-container *ngFor="let message of group.messages; trackBy: trackByMessageId; let i = index">
+            <app-message-item
+              [message]="message"
+              [isOwn]="isOwnMessage(message)"
+              [showAvatar]="shouldShowAvatarInGroup(group.messages, i)"
+              [showTimestamp]="shouldShowTimestampInGroup(group.messages, i)"
+              [isGrouped]="isMessageGroupedInGroup(group.messages, i)"
+              (messageDeleted)="onMessageDeleted($event)"
+              (messageEdited)="onMessageEdited($event)"
+              (reactionAdded)="onReactionAdded($event)"
+            ></app-message-item>
+          </ng-container>
         </ng-container>
-      </div>
+      </cdk-virtual-scroll-viewport>
       
       <!-- Loading Initial Messages -->
       <div *ngIf="loading" class="loading-container">
@@ -81,6 +95,16 @@ import { Conversation, Message, CursorPage } from '../../../../shared/models';
       >
         <mat-icon>keyboard_arrow_down</mat-icon>
       </button>
+      
+      <!-- New Messages Indicator -->
+      <div 
+        *ngIf="newMessagesCount > 0 && !isAtBottom"
+        class="new-messages-indicator"
+        (click)="scrollToBottom()"
+      >
+        <mat-icon>keyboard_arrow_down</mat-icon>
+        <span>{{ newMessagesCount }} nova{{ newMessagesCount > 1 ? 's' : '' }} mensagem{{ newMessagesCount > 1 ? 'ns' : '' }}</span>
+      </div>
     </div>
   `,
   styles: [`
@@ -113,11 +137,14 @@ import { Conversation, Message, CursorPage } from '../../../../shared/models';
       border-bottom: 1px solid #e0e0e0;
     }
     
-    .messages-list {
+    .messages-viewport {
       flex: 1;
-      overflow-y: auto;
+      height: 100%;
+      padding: 0;
+    }
+    
+    .messages-viewport .cdk-virtual-scroll-content-wrapper {
       padding: 16px;
-      scroll-behavior: smooth;
     }
     
     .empty-state {
@@ -202,27 +229,57 @@ import { Conversation, Message, CursorPage } from '../../../../shared/models';
       box-shadow: 0 2px 8px rgba(0,0,0,0.15);
     }
     
+    .new-messages-indicator {
+      position: absolute;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #2196f3;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      font-size: 14px;
+      z-index: 10;
+      transition: all 0.3s ease;
+    }
+    
+    .new-messages-indicator:hover {
+      background: #1976d2;
+      transform: translateX(-50%) translateY(-2px);
+    }
+    
+    .new-messages-indicator mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+    
     /* Custom scrollbar */
-    .messages-list::-webkit-scrollbar {
+    .messages-viewport::-webkit-scrollbar {
       width: 6px;
     }
     
-    .messages-list::-webkit-scrollbar-track {
+    .messages-viewport::-webkit-scrollbar-track {
       background: transparent;
     }
     
-    .messages-list::-webkit-scrollbar-thumb {
+    .messages-viewport::-webkit-scrollbar-thumb {
       background: #ccc;
       border-radius: 3px;
     }
     
-    .messages-list::-webkit-scrollbar-thumb:hover {
+    .messages-viewport::-webkit-scrollbar-thumb:hover {
       background: #999;
     }
     
     /* Responsive adjustments */
     @media (max-width: 768px) {
-      .messages-list {
+      .messages-viewport .cdk-virtual-scroll-content-wrapper {
         padding: 12px;
       }
       
@@ -232,30 +289,51 @@ import { Conversation, Message, CursorPage } from '../../../../shared/models';
         bottom: 12px;
         right: 12px;
       }
+      
+      .new-messages-indicator {
+        bottom: 60px;
+        font-size: 12px;
+        padding: 6px 12px;
+      }
     }
   `]
 })
 export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewChecked {
   @Input() conversation: Conversation | null = null;
   @ViewChild('messagesContainer') messagesContainer!: ElementRef;
-  @ViewChild('messagesList') messagesList!: ElementRef;
+  @ViewChild('messagesViewport') messagesViewport!: CdkVirtualScrollViewport;
 
   messages: Message[] = [];
+  groupedMessages: MessageGroup[] = [];
   loading = false;
   loadingMore = false;
   hasMoreMessages = true;
   showScrollToBottom = false;
+  newMessagesCount = 0;
+  isAtBottom = true;
+  estimatedItemSize = 80;
   
   private destroy$ = new Subject<void>();
   private messagesSubject = new BehaviorSubject<Message[]>([]);
   private currentCursor: string | null | undefined = null;
   private shouldScrollToBottom = true;
   private lastScrollHeight = 0;
+  private scrollPositionSubject = new BehaviorSubject<number>(0);
+  private lastSeenMessageId: number | null = null;
 
   constructor(
     private chatApiService: ChatApiService,
     private realtimeService: RealtimeService
-  ) {}
+  ) {
+    // Set up message grouping observable
+    this.messagesSubject.pipe(
+      takeUntil(this.destroy$),
+      map(messages => this.groupMessagesByDate(messages))
+    ).subscribe(groupedMessages => {
+      this.groupedMessages = groupedMessages;
+      this.updateNewMessagesCount();
+    });
+  }
 
   ngOnInit(): void {
     this.setupRealtimeListeners();
@@ -314,7 +392,7 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
     }
 
     this.loadingMore = true;
-    const previousScrollHeight = this.messagesList.nativeElement.scrollHeight;
+    const previousScrollHeight = this.messagesViewport?.elementRef.nativeElement.scrollHeight || 0;
 
     this.chatApiService.getMessages(this.conversation.id, { cursor: this.currentCursor }).pipe(
       takeUntil(this.destroy$)
@@ -329,9 +407,10 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
         
         // Maintain scroll position
         setTimeout(() => {
-          const newScrollHeight = this.messagesList.nativeElement.scrollHeight;
-          const scrollDiff = newScrollHeight - previousScrollHeight;
-          this.messagesList.nativeElement.scrollTop += scrollDiff;
+          if (this.messagesViewport) {
+            const currentScrollTop = this.messagesViewport.measureScrollOffset('top');
+            this.messagesViewport.scrollToOffset(currentScrollTop);
+          }
         });
       },
       error: (error) => {
@@ -365,8 +444,37 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
   }
 
   private setupScrollListener(): void {
-    // This would be implemented to show/hide scroll to bottom button
-    // For now, we'll keep it simple
+    // Set up scroll position tracking with debounce
+    this.scrollPositionSubject.pipe(
+      takeUntil(this.destroy$),
+      debounceTime(100)
+    ).subscribe(scrollTop => {
+      this.updateScrollState(scrollTop);
+    });
+  }
+  
+  onScrolledIndexChange(index: number): void {
+    if (this.messagesViewport) {
+      const scrollTop = this.messagesViewport.measureScrollOffset('top');
+      this.scrollPositionSubject.next(scrollTop);
+    }
+  }
+  
+  private updateScrollState(scrollTop: number): void {
+    if (!this.messagesViewport) return;
+    
+    const viewport = this.messagesViewport.elementRef.nativeElement;
+    const scrollHeight = this.messagesViewport.measureScrollOffset('bottom');
+    
+    // Check if user is at bottom (within 100px threshold)
+    this.isAtBottom = scrollHeight <= 100;
+    this.showScrollToBottom = !this.isAtBottom && this.groupedMessages.length > 0;
+    
+    // Update last seen message when scrolling
+    if (this.isAtBottom && this.messages.length > 0) {
+      this.lastSeenMessageId = this.messages[this.messages.length - 1].id;
+      this.newMessagesCount = 0;
+    }
   }
 
   private addNewMessage(message: Message): void {
@@ -389,10 +497,24 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
   }
 
   scrollToBottom(): void {
-    if (this.messagesList) {
-      const element = this.messagesList.nativeElement;
-      element.scrollTop = element.scrollHeight;
-      this.showScrollToBottom = false;
+    try {
+      if (this.messagesViewport) {
+        this.messagesViewport.scrollToIndex(this.messages.length - 1, 'smooth');
+        this.newMessagesCount = 0;
+        this.isAtBottom = true;
+        this.showScrollToBottom = false;
+      }
+    } catch (err) {
+      console.error('Error scrolling to bottom:', err);
+    }
+  }
+  
+  scrollToNewMessages(): void {
+    if (this.newMessagesCount > 0 && this.lastSeenMessageId) {
+      const lastSeenIndex = this.messages.findIndex(m => m.id === this.lastSeenMessageId);
+      if (lastSeenIndex >= 0 && lastSeenIndex < this.messages.length - 1) {
+        this.messagesViewport.scrollToIndex(lastSeenIndex + 1, 'smooth');
+      }
     }
   }
 
@@ -459,18 +581,18 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
     return timeDiff <= 5 * 60 * 1000; // 5 minutes
   }
 
-  formatDateSeparator(dateString: string): string {
-    const date = new Date(dateString);
+  formatDateSeparator(date: string | Date): string {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     
-    if (date.toDateString() === today.toDateString()) {
+    if (dateObj.toDateString() === today.toDateString()) {
       return 'Hoje';
-    } else if (date.toDateString() === yesterday.toDateString()) {
+    } else if (dateObj.toDateString() === yesterday.toDateString()) {
       return 'Ontem';
     } else {
-      return date.toLocaleDateString('pt-BR', { 
+      return dateObj.toLocaleDateString('pt-BR', { 
         weekday: 'long', 
         year: 'numeric', 
         month: 'long', 
@@ -502,5 +624,87 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
     // This should get the current user ID from AuthService
     // For now, we'll return a placeholder
     return 1;
+  }
+  
+  private groupMessagesByDate(messages: Message[]): MessageGroup[] {
+    const groups: { [key: string]: Message[] } = {};
+    
+    messages.forEach(message => {
+      const date = new Date(message.created_at).toDateString();
+      if (!groups[date]) {
+        groups[date] = [];
+      }
+      groups[date].push(message);
+    });
+    
+    return Object.keys(groups)
+        .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+        .map(date => ({
+          date: this.formatDateSeparator(date),
+          messages: groups[date].sort((a, b) => 
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          )
+        }));
+  }
+  
+  private updateNewMessagesCount(): void {
+    if (!this.lastSeenMessageId || this.isAtBottom) {
+      this.newMessagesCount = 0;
+      return;
+    }
+    
+    const lastSeenIndex = this.messages.findIndex(m => m.id === this.lastSeenMessageId);
+    if (lastSeenIndex >= 0) {
+      this.newMessagesCount = this.messages.length - lastSeenIndex - 1;
+    }
+  }
+  
+  trackByGroup(index: number, group: MessageGroup): string {
+    return group.date;
+  }
+  
+  shouldShowAvatarInGroup(messages: Message[], index: number): boolean {
+    if (index === messages.length - 1) {
+      return true;
+    }
+    
+    const currentMessage = messages[index];
+    const nextMessage = messages[index + 1];
+    
+    return currentMessage.user.id !== nextMessage.user.id || !this.isMessageGroupedInGroup(messages, index + 1);
+  }
+
+  shouldShowTimestampInGroup(messages: Message[], index: number): boolean {
+    if (index === messages.length - 1) {
+      return true;
+    }
+    
+    const currentMessage = messages[index];
+    const nextMessage = messages[index + 1];
+    
+    // Show timestamp if messages are from different users or have significant time gap
+    if (currentMessage.user.id !== nextMessage.user.id) {
+      return true;
+    }
+    
+    const timeDiff = new Date(nextMessage.created_at).getTime() - new Date(currentMessage.created_at).getTime();
+    return timeDiff > 5 * 60 * 1000; // 5 minutes
+  }
+
+  isMessageGroupedInGroup(messages: Message[], index: number): boolean {
+    if (index === 0) {
+      return false;
+    }
+    
+    const currentMessage = messages[index];
+    const previousMessage = messages[index - 1];
+    
+    // Group messages from same user within 5 minutes
+    if (currentMessage.user.id !== previousMessage.user.id) {
+      return false;
+    }
+    
+    const timeDiff = new Date(currentMessage.created_at).getTime() - new Date(previousMessage.created_at).getTime();
+    return timeDiff <= 5 * 60 * 1000; // 5 minutes
   }
 }
