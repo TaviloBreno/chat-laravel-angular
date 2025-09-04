@@ -3,6 +3,9 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\MessageController;
+use App\Http\Controllers\Api\SearchController;
+use App\Http\Controllers\Api\TypingController;
+use App\Http\Controllers\Api\UploadController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -36,15 +39,24 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Conversation routes
     Route::apiResource('conversations', ConversationController::class);
-    Route::post('/conversations/{conversation}/users', [ConversationController::class, 'addUser']);
-    Route::delete('/conversations/{conversation}/users', [ConversationController::class, 'removeUser']);
+    Route::post('/conversations/{conversation}/participants', [ConversationController::class, 'addUser']);
+    Route::delete('/conversations/{conversation}/participants', [ConversationController::class, 'removeUser']);
     
     // Message routes
     Route::get('/conversations/{conversation}/messages', [MessageController::class, 'index']);
     Route::post('/conversations/{conversation}/messages', [MessageController::class, 'store']);
     Route::get('/messages/{message}', [MessageController::class, 'show']);
-    Route::put('/messages/{message}', [MessageController::class, 'update']);
+    Route::patch('/messages/{message}', [MessageController::class, 'update']);
     Route::delete('/messages/{message}', [MessageController::class, 'destroy']);
     Route::post('/messages/{message}/read', [MessageController::class, 'markAsRead']);
     Route::post('/conversations/{conversation}/messages/read-all', [MessageController::class, 'markAllAsRead']);
+    
+    // Typing indicator routes
+    Route::post('/conversations/{conversation}/typing', [TypingController::class, 'typing']);
+    
+    // Upload routes
+    Route::post('/uploads', [UploadController::class, 'store']);
+    
+    // Search routes
+    Route::get('/search', [SearchController::class, 'search']);
 });
