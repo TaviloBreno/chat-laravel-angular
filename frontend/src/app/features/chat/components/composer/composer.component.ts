@@ -30,9 +30,9 @@ import { Conversation, Message, SendMessageRequest } from '../../../../shared/mo
   template: `
     <div class="composer-container" *ngIf="conversation">
       <!-- File Upload Progress -->
-      <div *ngIf="uploadProgress > 0 && uploadProgress < 100" class="upload-progress">
-        <mat-progress-bar [value]="uploadProgress"></mat-progress-bar>
-        <span class="progress-text">Enviando arquivo... {{ uploadProgress }}%</span>
+      <div *ngIf="isUploading" class="upload-progress">
+        <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+        <span class="progress-text">Enviando arquivos...</span>
         <button mat-icon-button (click)="cancelUpload()" class="cancel-upload">
           <mat-icon>close</mat-icon>
         </button>
@@ -62,6 +62,66 @@ import { Conversation, Message, SendMessageRequest } from '../../../../shared/mo
         <span class="typing-text">
           {{ getTypingText() }}
         </span>
+      </div>
+      
+      <!-- Drag & Drop Zone -->
+      <div class="drag-drop-zone" 
+           [class.drag-over]="isDragOver"
+           (dragover)="onDragOver($event)"
+           (dragleave)="onDragLeave($event)"
+           (drop)="onDrop($event)">
+        
+        <!-- File validation errors -->
+         @if (fileErrors.length > 0) {
+           <div class="file-errors">
+             @for (error of fileErrors; track error) {
+               <div class="error-message">
+                 <mat-icon>error</mat-icon>
+                 {{ error }}
+               </div>
+             }
+           </div>
+         }
+         
+         <!-- File attachments preview -->
+         @if (selectedFiles.length > 0) {
+           <div class="attachments-preview">
+             @for (file of selectedFiles; track file.name; let i = $index) {
+               <div class="attachment-item">
+                 <!-- Image preview -->
+                 @if (filePreviewUrls[file.name]) {
+                   <div class="image-preview">
+                     <img [src]="filePreviewUrls[file.name]" [alt]="file.name" />
+                   </div>
+                 } @else {
+                   <div class="file-icon">
+                     {{ getFileIcon(file) }}
+                   </div>
+                 }
+                 
+                 <div class="file-info">
+                   <span class="file-name" [title]="file.name">{{ file.name }}</span>
+                   <span class="file-size">{{ formatFileSize(file.size) }}</span>
+                 </div>
+                 
+                 <button type="button" 
+                         class="remove-file" 
+                         (click)="removeFile(i)"
+                         matTooltip="Remover arquivo">
+                   <mat-icon>close</mat-icon>
+                 </button>
+               </div>
+             }
+           </div>
+         }
+         
+         <!-- Drop zone message -->
+         @if (isDragOver) {
+           <div class="drop-message">
+             <mat-icon>cloud_upload</mat-icon>
+             <span>Solte os arquivos aqui</span>
+           </div>
+         }
       </div>
       
       <!-- Main Composer -->
@@ -174,25 +234,33 @@ import { Conversation, Message, SendMessageRequest } from '../../../../shared/mo
       display: flex;
       align-items: center;
       gap: 12px;
-      margin-bottom: 12px;
-      padding: 8px 12px;
-      background: #f5f5f5;
+      padding: 12px 16px;
+      background: #e3f2fd;
       border-radius: 8px;
+      margin-bottom: 12px;
+      border: 1px solid #bbdefb;
     }
     
     .upload-progress mat-progress-bar {
       flex: 1;
+      height: 4px;
     }
     
     .progress-text {
-      font-size: 12px;
-      color: #666;
+      font-size: 13px;
+      color: #1976d2;
+      font-weight: 500;
       white-space: nowrap;
     }
     
     .cancel-upload {
-      width: 24px;
-      height: 24px;
+      width: 32px;
+      height: 32px;
+      color: #666;
+    }
+    
+    .cancel-upload:hover {
+      background: rgba(0, 0, 0, 0.04);
     }
     
     .cancel-upload mat-icon {
@@ -413,6 +481,144 @@ import { Conversation, Message, SendMessageRequest } from '../../../../shared/mo
       justify-content: flex-end;
     }
     
+    .drag-drop-zone {
+      position: relative;
+      transition: all 0.3s ease;
+    }
+    
+    .drag-drop-zone.drag-over {
+      background: #e3f2fd;
+      border: 2px dashed #2196f3;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    
+    .file-errors {
+      margin-bottom: 12px;
+    }
+    
+    .error-message {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #ffebee;
+      color: #c62828;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    
+    .error-message mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
+    
+    .attachments-preview {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    
+    .attachment-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #f5f5f5;
+      border-radius: 8px;
+      border: 1px solid #e0e0e0;
+      max-width: 250px;
+    }
+    
+    .image-preview {
+      width: 32px;
+      height: 32px;
+      border-radius: 4px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    
+    .image-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    
+    .file-icon {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+    
+    .file-info {
+      flex: 1;
+      min-width: 0;
+    }
+    
+    .file-name {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: #333;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .file-size {
+      display: block;
+      font-size: 11px;
+      color: #666;
+    }
+    
+    .remove-file {
+      width: 24px;
+      height: 24px;
+      flex-shrink: 0;
+      border: none;
+      background: none;
+      cursor: pointer;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.2s;
+    }
+    
+    .remove-file:hover {
+      background: #e0e0e0;
+    }
+    
+    .remove-file mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      color: #666;
+    }
+    
+    .drop-message {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 24px;
+      color: #2196f3;
+      font-weight: 500;
+    }
+    
+    .drop-message mat-icon {
+      font-size: 32px;
+      width: 32px;
+      height: 32px;
+    }
+    
     /* Responsive adjustments */
     @media (max-width: 768px) {
       .composer-container {
@@ -448,6 +654,14 @@ import { Conversation, Message, SendMessageRequest } from '../../../../shared/mo
         left: 8px;
         width: auto;
       }
+      
+      .attachment-item {
+        max-width: 200px;
+      }
+      
+      .attachments-preview {
+        flex-direction: column;
+      }
     }
   `]
 })
@@ -466,6 +680,17 @@ export class ComposerComponent implements OnInit, OnDestroy {
   fileAccept = '*/*';
   showTypingIndicator = false;
   typingUsers: string[] = [];
+  
+  // File handling
+  selectedFiles: File[] = [];
+  maxFileSize = 10 * 1024 * 1024; // 10MB
+  allowedFileTypes = ['image/*', 'application/pdf', 'text/*', 'video/*', 'audio/*'];
+  isUploading = false;
+  isDragOver = false;
+  filePreviewUrls: { [key: string]: string } = {};
+  
+  // File validation errors
+  fileErrors: string[] = [];
   
   commonEmojis = [
     '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣',
@@ -615,45 +840,139 @@ export class ComposerComponent implements OnInit, OnDestroy {
   }
 
   canSend(): boolean {
-    return this.messageText.trim().length > 0 && !this.sending;
+    return (this.messageText.trim().length > 0 || this.selectedFiles.length > 0) && !this.sending && !this.isUploading;
   }
 
   sendMessage(): void {
-    if (!this.canSend() || !this.conversation) {
+    if (!this.conversation || (!this.messageText.trim() && this.selectedFiles.length === 0)) {
       return;
     }
 
+    // If there are files, upload them first
+    if (this.selectedFiles.length > 0) {
+      this.uploadFilesAndSendMessage();
+    } else {
+      this.sendTextMessage();
+    }
+  }
+
+  private sendTextMessage(): void {
     const messageData: SendMessageRequest = {
-      conversation_id: this.conversation.id,
       body: this.messageText.trim(),
+      conversation_id: this.conversation!.id,
       type: 'text' as const
     };
 
+     this.sending = true;
+     this.stopTyping();
+
+     this.chatApiService.sendMessage(messageData).pipe(
+       takeUntil(this.destroy$)
+     ).subscribe({
+       next: (message: Message) => {
+         this.resetComposer();
+         this.messageSent.emit(message);
+         
+         // Focus back to input
+         setTimeout(() => {
+           if (this.messageInput) {
+             this.messageInput.nativeElement.focus();
+           }
+         });
+       },
+       error: (error) => {
+         console.error('Error sending message:', error);
+         this.sending = false;
+       }
+     });
+   }
+
+  private uploadFilesAndSendMessage(): void {
+    this.isUploading = true;
+    this.uploadProgress = 0;
     this.sending = true;
     this.stopTyping();
+    
+    const uploadPromises = this.selectedFiles.map(file => this.uploadSingleFile(file));
+    
+    Promise.all(uploadPromises).then(uploadedFiles => {
+       // Send each file as a separate message
+       uploadedFiles.forEach((uploadedFile, index) => {
+         const messageData: SendMessageRequest = {
+           body: this.messageText.trim() || uploadedFile.name,
+           conversation_id: this.conversation!.id,
+           type: 'file' as const,
+           file: uploadedFile
+         };
+ 
+         this.chatApiService.sendMessage(messageData).pipe(
+           takeUntil(this.destroy$)
+         ).subscribe({
+           next: (message: Message) => {
+             this.messageSent.emit(message);
+             
+             // Reset composer only after the last file
+             if (index === uploadedFiles.length - 1) {
+               this.resetComposer();
+               
+               // Focus back to input
+               setTimeout(() => {
+                 if (this.messageInput) {
+                   this.messageInput.nativeElement.focus();
+                 }
+               });
+             }
+           },
+           error: (error) => {
+             console.error('Error sending message with files:', error);
+             this.isUploading = false;
+             this.sending = false;
+           }
+         });
+       });
+     }).catch(error => {
+       console.error('Error uploading files:', error);
+       this.isUploading = false;
+       this.sending = false;
+     });
+  }
 
-    this.chatApiService.sendMessage(messageData).pipe(
-      takeUntil(this.destroy$)
-    ).subscribe({
-      next: (message) => {
-        this.messageSent.emit(message);
-        this.messageText = '';
-        this.sending = false;
-        this.cancelReply();
-        this.adjustTextareaHeight();
-        
-        // Focus back to input
-        setTimeout(() => {
-          if (this.messageInput) {
-            this.messageInput.nativeElement.focus();
-          }
-        });
-      },
-      error: (error: any) => {
-        console.error('Error sending message:', error);
-        this.sending = false;
+  private uploadSingleFile(file: File): Promise<any> {
+    return new Promise((resolve, reject) => {
+      this.chatApiService.uploadFile(file).subscribe({
+        next: (response) => {
+          resolve(response);
+        },
+        error: (error) => {
+          reject(error);
+        }
+      });
+    });
+  }
+
+  private resetComposer(): void {
+    this.messageText = '';
+    this.selectedFiles = [];
+    this.fileErrors = [];
+    this.isUploading = false;
+    this.uploadProgress = 0;
+    this.sending = false;
+    
+    // Clear file preview URLs
+    Object.values(this.filePreviewUrls).forEach(url => {
+      if (url.startsWith('blob:')) {
+        URL.revokeObjectURL(url);
       }
     });
+    this.filePreviewUrls = {};
+    
+    this.adjustTextareaHeight();
+    
+    if (this.replyingTo) {
+      this.cancelReply();
+    }
+    
+    this.stopTyping();
   }
 
   selectFile(type: 'image' | 'document' | 'any'): void {
@@ -671,49 +990,127 @@ export class ComposerComponent implements OnInit, OnDestroy {
     this.fileInput.nativeElement.click();
   }
 
+  // Drag and Drop handlers
+  onDragOver(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDragOver = true;
+  }
+
+  onDragLeave(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDragOver = false;
+  }
+
+  onDrop(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDragOver = false;
+    
+    const files = Array.from(event.dataTransfer?.files || []);
+    this.handleFileSelection(files);
+  }
+
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     const files = input.files;
     
     if (files && files.length > 0) {
-      for (let i = 0; i < files.length; i++) {
-        this.uploadFile(files[i]);
-      }
+      const fileArray = Array.from(files);
+      this.handleFileSelection(fileArray);
     }
     
     // Reset input
     input.value = '';
   }
 
-  private uploadFile(file: File): void {
-    if (!this.conversation) return;
-
-    this.uploadProgress = 0;
+  handleFileSelection(files: File[]): void {
+    this.fileErrors = [];
+    const validFiles: File[] = [];
     
-    const messageData: SendMessageRequest = {
-       conversation_id: this.conversation.id,
-       body: file.name,
-       type: 'file' as const,
-       file: file
-     };
-    
-    this.chatApiService.sendMessage(messageData).pipe(
-      takeUntil(this.destroy$)
-    ).subscribe({
-      next: (message: Message) => {
-        this.uploadProgress = 0;
-        this.messageSent.emit(message);
-      },
-      error: (error: any) => {
-        console.error('Error uploading file:', error);
-        this.uploadProgress = 0;
+    files.forEach(file => {
+      const validation = this.validateFile(file);
+      if (validation.isValid) {
+        validFiles.push(file);
+        this.generateFilePreview(file);
+      } else {
+        this.fileErrors.push(`${file.name}: ${validation.error}`);
       }
     });
+    
+    this.selectedFiles = [...this.selectedFiles, ...validFiles];
+  }
+
+  validateFile(file: File): { isValid: boolean; error?: string } {
+    // Check file size
+    if (file.size > this.maxFileSize) {
+      return {
+        isValid: false,
+        error: `Arquivo muito grande. Máximo permitido: ${this.formatFileSize(this.maxFileSize)}`
+      };
+    }
+    
+    // Check file type
+    const isValidType = this.allowedFileTypes.some(type => {
+      if (type.endsWith('/*')) {
+        const category = type.replace('/*', '');
+        return file.type.startsWith(category);
+      }
+      return file.type === type;
+    });
+    
+    if (!isValidType) {
+      return {
+        isValid: false,
+        error: 'Tipo de arquivo não permitido'
+      };
+    }
+    
+    return { isValid: true };
+  }
+
+  generateFilePreview(file: File): void {
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        this.filePreviewUrls[file.name] = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  formatFileSize(bytes: number): string {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  removeFile(index: number): void {
+    const file = this.selectedFiles[index];
+    if (this.filePreviewUrls[file.name]) {
+      URL.revokeObjectURL(this.filePreviewUrls[file.name]);
+      delete this.filePreviewUrls[file.name];
+    }
+    this.selectedFiles.splice(index, 1);
+  }
+
+  getFileIcon(file: File): string {
+    if (file.type.startsWith('image/')) return '🖼️';
+    if (file.type.startsWith('video/')) return '🎥';
+    if (file.type.startsWith('audio/')) return '🎵';
+    if (file.type === 'application/pdf') return '📄';
+    if (file.type.startsWith('text/')) return '📝';
+    return '📎';
   }
 
   cancelUpload(): void {
-    // Implement upload cancellation logic
+    this.isUploading = false;
     this.uploadProgress = 0;
+    this.sending = false;
+    // Note: In a real implementation, you would also cancel the HTTP request
   }
 
   toggleEmojiPicker(): void {
