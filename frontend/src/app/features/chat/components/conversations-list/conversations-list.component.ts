@@ -17,6 +17,7 @@ import { ChatApiService } from '../../../../core/services/chat-api.service';
 import { RealtimeService } from '../../../../core/services/realtime.service';
 import { PresenceService } from '../../../../core/services/presence.service';
 import { Conversation, User, Message } from '../../../../shared/models';
+import { ConversationTimePipe, TruncatePipe } from '../../../../shared/pipes';
 
 @Component({
   selector: 'app-conversations-list',
@@ -34,7 +35,9 @@ import { Conversation, User, Message } from '../../../../shared/models';
     MatInputModule,
     MatFormFieldModule,
     MatSelectModule,
-    ScrollingModule
+    ScrollingModule,
+    ConversationTimePipe,
+    TruncatePipe
   ],
   template: `
     <div class="conversations-container">
@@ -133,7 +136,7 @@ import { Conversation, User, Message } from '../../../../shared/models';
             <div class="conversation-info">
               <div class="conversation-header">
                 <h4 class="conversation-name">{{ getConversationName(conversation) }}</h4>
-                <span class="conversation-time">{{ formatTime(conversation.updated_at) }}</span>
+                <span class="conversation-time">{{ conversation.updated_at | conversationTime }}</span>
               </div>
               
               <div class="conversation-preview">
@@ -565,19 +568,7 @@ export class ConversationsListComponent implements OnInit, OnDestroy {
     return message.body || 'Mensagem';
   }
 
-  formatTime(dateString: string): string {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
-    
-    if (diffInHours < 24) {
-      return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    } else if (diffInHours < 168) { // 7 days
-      return date.toLocaleDateString('pt-BR', { weekday: 'short' });
-    } else {
-      return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-    }
-  }
+
 
   hasUnreadMessages(conversation: Conversation): boolean {
     // This would typically check against read receipts

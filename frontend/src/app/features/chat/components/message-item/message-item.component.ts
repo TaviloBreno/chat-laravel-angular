@@ -9,6 +9,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatBadgeModule } from '@angular/material/badge';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Message } from '../../../../shared/models';
+import { TimeAgoPipe, FileSizePipe, FullTimestampPipe } from '../../../../shared/pipes';
 
 @Component({
   selector: 'app-message-item',
@@ -21,7 +22,10 @@ import { Message } from '../../../../shared/models';
     MatChipsModule,
     MatTooltipModule,
     MatDividerModule,
-    MatBadgeModule
+    MatBadgeModule,
+    TimeAgoPipe,
+    FileSizePipe,
+    FullTimestampPipe
   ],
   template: `
     <div 
@@ -66,7 +70,7 @@ import { Message } from '../../../../shared/models';
               <mat-icon class="file-icon">{{ getFileIcon(message.file_name || '') }}</mat-icon>
               <div class="file-details">
                 <span class="file-name">{{ message.file_name || 'Arquivo' }}</span>
-                <span class="file-size">{{ formatFileSize(message.file_size || 0) }}</span>
+                <span class="file-size">{{ (message.file_size || 0) | fileSize }}</span>
               </div>
             </div>
             <button 
@@ -179,8 +183,8 @@ import { Message } from '../../../../shared/models';
         
         <!-- Message Timestamp and Status -->
         <div *ngIf="showTimestamp" class="message-footer">
-          <span class="message-time" [matTooltip]="getFullTimestamp(message.created_at)">{{ formatTime(message.created_at) }}</span>
-          <span *ngIf="message.edited_at" class="edited-indicator" [matTooltip]="'Editada em ' + getFullTimestamp(message.edited_at)">(editada)</span>
+          <span class="message-time" [matTooltip]="message.created_at | fullTimestamp">{{ message.created_at | timeAgo }}</span>
+          <span *ngIf="message.edited_at" class="edited-indicator" [matTooltip]="'Editada em ' + (message.edited_at | fullTimestamp)">(editada)</span>
           
           <!-- Message Status (for own messages) -->
           <div *ngIf="isOwn" class="message-status">
@@ -762,56 +766,7 @@ export class MessageItemComponent implements OnInit {
     }
   }
 
-  formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  }
 
-  formatTime(dateString: string): string {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInMs = now.getTime() - date.getTime();
-    const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
-    const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
-    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-    
-    if (diffInMinutes < 1) {
-      return 'agora';
-    } else if (diffInMinutes < 60) {
-      return diffInMinutes === 1 ? '1 minuto atrás' : `${diffInMinutes} minutos atrás`;
-    } else if (diffInHours < 24) {
-      return diffInHours === 1 ? '1 hora atrás' : `${diffInHours} horas atrás`;
-    } else if (diffInDays === 1) {
-      return 'ontem às ' + date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    } else if (diffInDays < 7) {
-      const dayNames = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
-      return dayNames[date.getDay()] + ' às ' + date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    } else {
-      return date.toLocaleDateString('pt-BR', { 
-        day: '2-digit', 
-        month: '2-digit', 
-        year: diffInDays > 365 ? '2-digit' : undefined 
-      }) + ' às ' + date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    }
-  }
-  
-  getFullTimestamp(dateString: string): string {
-    const date = new Date(dateString);
-    return date.toLocaleString('pt-BR', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-  }
 
   hasReactions(): boolean {
     // This would check if the message has reactions

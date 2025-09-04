@@ -9,6 +9,7 @@ import { ChatApiService } from '../../../../core/services/chat-api.service';
 import { RealtimeService } from '../../../../core/services/realtime.service';
 import { MessageItemComponent } from '../message-item/message-item.component';
 import { Conversation, Message, CursorPage } from '../../../../shared/models';
+import { DateSeparatorPipe } from '../../../../shared/pipes';
 
 interface MessageGroup {
   date: string;
@@ -24,7 +25,8 @@ interface MessageGroup {
     MatIconModule,
     MatButtonModule,
     ScrollingModule,
-    MessageItemComponent
+    MessageItemComponent,
+    DateSeparatorPipe
   ],
   template: `
     <div class="messages-container" #messagesContainer>
@@ -60,7 +62,7 @@ interface MessageGroup {
         <ng-container *cdkVirtualFor="let group of groupedMessages; trackBy: trackByGroup; templateCacheSize: 0">
           <!-- Date Separator -->
           <div class="date-separator">
-            <span>{{ group.date }}</span>
+            <span>{{ group.date | dateSeparator }}</span>
           </div>
           
           <!-- Messages in this date group -->
@@ -581,25 +583,7 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
     return timeDiff <= 5 * 60 * 1000; // 5 minutes
   }
 
-  formatDateSeparator(date: string | Date): string {
-    const dateObj = typeof date === 'string' ? new Date(date) : date;
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    
-    if (dateObj.toDateString() === today.toDateString()) {
-      return 'Hoje';
-    } else if (dateObj.toDateString() === yesterday.toDateString()) {
-      return 'Ontem';
-    } else {
-      return dateObj.toLocaleDateString('pt-BR', { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
-      });
-    }
-  }
+
 
   isOwnMessage(message: Message): boolean {
     return message.user.id === this.getCurrentUserId();
@@ -640,7 +624,7 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
     return Object.keys(groups)
         .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
         .map(date => ({
-          date: this.formatDateSeparator(date),
+          date: date,
           messages: groups[date].sort((a, b) => 
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
           )
