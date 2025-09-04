@@ -27,6 +27,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
     
+    // Broadcasting authentication endpoint
+    Route::post('/broadcasting/auth', function (Request $request) {
+        return response()->json([
+            'auth' => auth()->user()->createToken('broadcasting')->plainTextToken
+        ]);
+    });
+    
     // Conversation routes
     Route::apiResource('conversations', ConversationController::class);
     Route::post('/conversations/{conversation}/users', [ConversationController::class, 'addUser']);
