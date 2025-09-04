@@ -34,7 +34,8 @@ interface MessageGroup {
   template: `
     <div class="messages-container" 
          #messagesContainer
-         [appKeyboardShortcuts]="keyboardShortcuts"
+         appKeyboardShortcuts
+         [shortcuts]="keyboardShortcuts"
          [context]="'messages'"
          role="log"
          aria-label="Lista de mensagens"
@@ -395,7 +396,12 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
     
     // Clean up keyboard shortcuts
     this.keyboardShortcuts.forEach(shortcut => {
-      this.keyboardService.unregisterShortcut(shortcut.key, shortcut.ctrlKey, shortcut.altKey, shortcut.shiftKey);
+      this.keyboardService.unregisterShortcut(shortcut.key, {
+        ctrlKey: shortcut.ctrlKey,
+        altKey: shortcut.altKey,
+        shiftKey: shortcut.shiftKey,
+        metaKey: shortcut.metaKey
+      }, shortcut.context);
     });
   }
 
@@ -407,12 +413,7 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
     }
   }
 
-  scrollToBottom(): void {
-    if (this.messagesViewport) {
-      this.messagesViewport.scrollToIndex(this.groupedMessages.length - 1);
-      this.accessibilityService.announce('Rolado para o final das mensagens');
-    }
-  }
+
 
   scrollPageUp(): void {
     if (this.messagesViewport) {
@@ -596,6 +597,7 @@ export class MessagesThreadComponent implements OnInit, OnDestroy, OnChanges, Af
         this.newMessagesCount = 0;
         this.isAtBottom = true;
         this.showScrollToBottom = false;
+        this.accessibilityService.announce('Rolado para o final das mensagens');
       }
     } catch (err) {
       console.error('Error scrolling to bottom:', err);

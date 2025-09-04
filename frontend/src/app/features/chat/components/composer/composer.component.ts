@@ -37,11 +37,11 @@ import { KeyboardShortcutsService, KeyboardShortcut, ErrorHandlerService, Access
     <div 
       class="composer-container" 
       *ngIf="conversation"
-      [appKeyboardShortcuts]="keyboardShortcuts"
+      appKeyboardShortcuts
+      [shortcuts]="keyboardShortcuts"
       context="composer"
       role="region"
-      aria-label="Área de composição de mensagem"
-    >
+      aria-label="Área de composição de mensagem">
       <!-- File Upload Progress -->
       <div *ngIf="isUploading" class="upload-progress">
         <mat-progress-bar mode="indeterminate"></mat-progress-bar>
@@ -56,7 +56,7 @@ import { KeyboardShortcutsService, KeyboardShortcut, ErrorHandlerService, Access
         <div class="reply-content">
           <div class="reply-header">
             <mat-icon>reply</mat-icon>
-            <span>Respondendo a {{ replyingTo.user?.name }}</span>
+            <span>Respondendo a {{ replyingTo.user.name }}</span>
           </div>
           <div class="reply-message">{{ getReplyPreview(replyingTo) }}</div>
         </div>
@@ -775,11 +775,7 @@ export class ComposerComponent implements OnInit, OnDestroy {
     }
   }
 
-  ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
-    this.clearTypingTimeout();
-  }
+
 
   onKeyDown(event: KeyboardEvent): void {
     // Enhanced keyboard shortcuts
@@ -1220,10 +1216,16 @@ export class ComposerComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+    this.clearTypingTimeout();
     
     // Clean up keyboard shortcuts
     this.keyboardShortcuts.forEach(shortcut => {
-      this.keyboardService.unregisterShortcut(shortcut.key, shortcut.ctrlKey, shortcut.altKey, shortcut.shiftKey);
+      this.keyboardService.unregisterShortcut(shortcut.key, {
+        ctrlKey: shortcut.ctrlKey,
+        altKey: shortcut.altKey,
+        shiftKey: shortcut.shiftKey,
+        metaKey: shortcut.metaKey
+      }, shortcut.context);
     });
   }
 }

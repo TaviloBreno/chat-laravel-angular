@@ -30,9 +30,10 @@ export class FocusTrapDirective implements OnInit, OnDestroy {
   }
 
   @HostListener('keydown.escape', ['$event'])
-  onEscapeKey(event: KeyboardEvent): void {
+  onEscapeKey(event: Event): void {
+    const keyboardEvent = event as KeyboardEvent;
     if (this.enabled && this.focusTrap) {
-      event.preventDefault();
+      keyboardEvent.preventDefault();
       this.destroyFocusTrap();
     }
   }

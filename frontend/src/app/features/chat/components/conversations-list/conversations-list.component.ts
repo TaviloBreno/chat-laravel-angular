@@ -36,8 +36,7 @@ import { ConversationTimePipe, TruncatePipe } from '../../../../shared/pipes';
     MatFormFieldModule,
     MatSelectModule,
     ScrollingModule,
-    ConversationTimePipe,
-    TruncatePipe
+    ConversationTimePipe
   ],
   template: `
     <div class="conversations-container">

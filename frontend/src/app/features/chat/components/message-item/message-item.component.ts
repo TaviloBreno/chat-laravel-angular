@@ -37,7 +37,7 @@ import { TimeAgoPipe, FileSizePipe, FullTimestampPipe } from '../../../../shared
       <!-- Avatar (for other users) -->
       <div *ngIf="!isOwn && showAvatar" class="message-avatar">
         <div class="avatar">
-          {{ getUserInitials(message.user?.name || 'U') }}
+          {{ getUserInitials(message.user.name || 'U') }}
         </div>
       </div>
       
@@ -48,7 +48,7 @@ import { TimeAgoPipe, FileSizePipe, FullTimestampPipe } from '../../../../shared
       <div class="message-content">
         <!-- User Name (for group chats and other users) -->
         <div *ngIf="!isOwn && showAvatar && !isGrouped" class="message-sender">
-          {{ message.user?.name || 'Usuário' }}
+          {{ message.user.name || 'Usuário' }}
         </div>
         
         <!-- Message Bubble -->
@@ -906,5 +906,16 @@ export class MessageItemComponent implements OnInit {
       // Emit event to retry sending the message
       this.messageRetry.emit(this.message.id);
     }
+  }
+
+  private getFullTimestamp(dateString: string): string {
+    const date = new Date(dateString);
+    return date.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   }
 }
