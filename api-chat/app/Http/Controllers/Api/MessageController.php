@@ -47,14 +47,6 @@ class MessageController extends Controller
     public function store(StoreMessageRequest $request, Conversation $conversation)
     {
         $user = Auth::user();
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        $request->validate([
-            'body' => 'required|string',
-            'type' => 'sometimes|string|in:text,image,file',
-            'meta' => 'sometimes|array',
-        ]);
 
         $message = Message::create([
             'conversation_id' => $conversation->id,
@@ -100,20 +92,8 @@ class MessageController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Message $message)
+    public function update(UpdateMessageRequest $request, Message $message)
     {
-        $user = Auth::user();
-        
-        // Apenas o autor da mensagem pode editá-la
-        if ($message->user_id !== $user->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        $request->validate([
-            'body' => 'sometimes|string',
-            'meta' => 'sometimes|array',
-        ]);
-
         $message->update($request->only(['body', 'meta']));
         
         return response()->json($message->load(['user', 'reads']));

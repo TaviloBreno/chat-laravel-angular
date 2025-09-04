@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
+use App\Http\Requests\UploadFileRequest;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -12,11 +12,8 @@ class UploadController extends Controller
     /**
      * Upload file
      */
-    public function store(Request $request)
-    {
-        $request->validate([
-            'file' => 'required|file|max:10240', // 10MB max
-            'type' => 'sometimes|in:image,document,audio,video',
+    public function store(UploadFileRequest $request)
+    {    'type' => 'sometimes|in:image,document,audio,video',
         ]);
 
         $file = $request->file('file');
