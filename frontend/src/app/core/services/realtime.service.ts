@@ -16,9 +16,10 @@ declare global {
   providedIn: 'root'
 })
 export class RealtimeService {
-  private echo: Echo | null = null;
+  private echo: any = null;
   private connectionStatusSubject = new BehaviorSubject<boolean>(false);
   public connectionStatus$ = this.connectionStatusSubject.asObservable();
+  public isConnected$ = this.connectionStatusSubject.asObservable();
 
   constructor(private tokenStorage: TokenStorageService) {
     // Make Pusher available globally
@@ -76,7 +77,7 @@ export class RealtimeService {
     }
   }
 
-  getEcho(): Echo | null {
+  getEcho(): any {
     return this.echo;
   }
 

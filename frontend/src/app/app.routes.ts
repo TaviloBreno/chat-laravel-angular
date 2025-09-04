@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
-import { AuthGuard } from './core/guards/auth.guard';
-import { GuestGuard } from './core/guards/guest.guard';
+import { authGuard } from './core/guards/auth.guard';
+import { guestGuard } from './core/guards/guest.guard';
 
 export const routes: Routes = [
   {
@@ -10,7 +10,7 @@ export const routes: Routes = [
   },
   {
     path: 'auth',
-    canActivate: [GuestGuard],
+    canActivate: [guestGuard],
     children: [
       {
         path: '',
@@ -29,7 +29,7 @@ export const routes: Routes = [
   },
   {
     path: 'chat',
-    canActivate: [AuthGuard],
+    canActivate: [authGuard],
     loadComponent: () => import('./features/chat/chat.component').then(m => m.ChatComponent)
   },
   {

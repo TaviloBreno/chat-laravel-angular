@@ -76,10 +76,14 @@ export class AuthService {
     return this.http.post(`${environment.apiBaseUrl}/auth/logout`, {})
       .pipe(
         tap(() => {
-          this.tokenStorage.clear();
-          this.currentUserSubject.next(null);
+          this.clearAuthData();
         })
       );
+  }
+
+  clearAuthData(): void {
+    this.tokenStorage.clear();
+    this.currentUserSubject.next(null);
   }
 
   isAuthenticated(): boolean {
