@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreConversationRequest;
+use App\Http\Requests\UpdateConversationRequest;
+use App\Http\Requests\ManageParticipantsRequest;
 use App\Models\Conversation;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -37,14 +40,8 @@ class ConversationController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request)
+    public function store(StoreConversationRequest $request)
     {
-        $request->validate([
-            'type' => 'required|in:private,group',
-            'title' => 'required_if:type,group|string|max:255',
-            'user_ids' => 'required|array|min:1',
-            'user_ids.*' => 'exists:users,id',
-        ]);
 
         $user = Auth::user();
         
@@ -110,20 +107,8 @@ class ConversationController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Conversation $conversation)
+    public function update(UpdateConversationRequest $request, Conversation $conversation)
     {
-        $user = Auth::user();
-        
-        // Verificar se o usuário é admin da conversa
-        $userRole = $conversation->users()->where('user_id', $user->id)->first();
-        if (!$userRole || $userRole->pivot->role !== 'admin') {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        $request->validate([
-            'title' => 'sometimes|string|max:255',
-        ]);
-
         $conversation->update($request->only(['title']));
         
         return response()->json($conversation->load(['users', 'owner']));
